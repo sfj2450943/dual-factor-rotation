@@ -103,6 +103,9 @@
   .etf-code{color:var(--sub);font-size:.78rem;margin-left:6px;}
   .up{color:var(--up);font-weight:700;}
   .down{color:var(--down);font-weight:700;}
+  /* 双因子数据列统一配色：蓝色，不红不绿；负值同蓝但降透明度以保留方向暗示 */
+  .factor{color:var(--blue);font-weight:600;}
+  .factor.neg{opacity:.5;}
   .score{font-weight:800;color:var(--gold);}
   .state-tag{font-size:.74rem;padding:2px 8px;border-radius:6px;font-weight:700;}
   .st-hold{background:rgba(240,160,32,.18);color:var(--gold);}
@@ -642,9 +645,9 @@ function rowHTML(e){
   if(e.valid===false){
     return `<tr><td colspan="11" style="text-align:center;color:var(--up);">${e.name}（${e.code}）行情获取失败，已使用示例值</td></tr>`;
   }
-  const biasCls = e.bias20>=0?'up':'down';
+  const biasCls = e.bias20>=0?'factor':'factor neg';
   const sign = e.bias20>=0?'+':'';
-  const chgCls = e.chg250>=0?'up':'down';
+  const chgCls = e.chg250>=0?'factor':'factor neg';
   const chgSign = e.chg250>=0?'+':'';
   let state;
   if(!e.qualify){
@@ -664,7 +667,7 @@ function rowHTML(e){
     <td>${e.ma20.toFixed(3)}</td>
     <td class="${biasCls}">${sign}${e.bias20.toFixed(2)}%</td>
     <td>${e.biasScore || '—'}</td>
-    <td>${e.vol60.toFixed(1)}%</td>
+    <td class="factor">${e.vol60.toFixed(1)}%</td>
     <td>${e.volScore || '—'}</td>
     <td class="${chgCls}">${chgSign}${e.chg250.toFixed(1)}%${e.chgDays>=250?'':`<span style="opacity:.5;font-size:.78em"> ·${e.chgDays}日</span>`}</td>
     <td class="score">${e.score || '—'}</td>
