@@ -481,8 +481,8 @@ function jsonpKline(url){
 /* ===== 真实快照兜底（同源 data.json，绕过所有网络封锁）=====
    当东财/腾讯/公共代理全部不可达（如某些家庭/公司 WiFi 屏蔽金融域名）时，
    页面回退到与网站同源托管的真实行情快照 data.json（由 gen_snapshot.py 生成：
-   BaoStock 后复权主源（独立服务器，家庭宽带直连可用），ETF 历史受限于 BaoStock 免费接口约146个交易日；
-   现价取自腾讯批量行情），
+   AShareHub 主源（云端拉数据，家庭宽带直连可用，不受本地封东财影响），ETF 历史充足故 250日涨幅为真实满250日；
+   现价取自 AShareHub etf_daily 最新不复权实际价），
    而不是假的示例死值。                                       */
 let SNAP = null;       // {code: [kline...]}  历史序列（后复权，用于因子/净值）
 let SNAP_PRICES = null;// {code: 最新不复权实际价}  用于「现价」列展示
@@ -509,7 +509,7 @@ function calcFactors(closes){
   const last = recent[nR-1];
   const ma20 = recent.slice(-20).reduce((a,b)=>a+b,0)/Math.min(20,nR);
   const bias20 = (last/ma20 - 1)*100;
-  // 250日涨幅：BaoStock 免费接口对 ETF 仅约146个交易日，数据不足时按实际可用天数计算
+  // 250日涨幅：AShareHub 主源历史充足为真实满250日；退化时按实际可用天数 min(250,n-1) 计算
   const chgDays = Math.min(250, n-1);
   const chg250 = (closes[n-1] / closes[n-1-chgDays] - 1) * 100;
   const rets=[];
