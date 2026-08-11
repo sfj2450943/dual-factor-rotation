@@ -300,7 +300,7 @@
     </div>
     <div class="card-body">
       <div class="nav-params">
-        <label>起始日<input type="date" id="navStart" onchange="onNavParamChange()"></label>
+        <label>起始日<input type="date" id="navStart" onchange="onNavParamChange(event)"></label>
         <label>本金(¥)<input type="number" id="navCapital" value="20000" min="1000" step="1000" onchange="onNavParamChange()"></label>
         <label>调仓间隔(交易日)<input type="number" id="navRebal" value="10" min="1" step="1" onchange="onNavParamChange()"></label>
         <label>佣金(万分之)<input type="number" id="navComm" value="1" min="0" step="0.1" onchange="onNavParamChange()"></label>
@@ -735,10 +735,34 @@ function showToast(msg){
 /* ===================== 净值统计（模拟 / 基准 / 图表 / 记录） ===================== */
 const NAV_KEY='dualFactorNavParams', NAV_MANUAL_KEY='dualFactorNavManual';
 
+/* 日期规范化：统一为 YYYYMMDD（去掉所有非数字），无法解析返回 ''。
+   页面内部日历/快照日期均为 YYYYMMDD；起始日输入框是 type=date（YYYY-MM-DD），
+   读入后必须规范化，否则 '20260105' >= '2026-08-11' 这类字符串比较会失真，
+   把全部历史交易日都纳入，产生大量虚假调仓记录。 */
+function normalizeDate(s){
+  if(!s || s==='__AUTO__') return '';
+  const d=String(s).replace(/\D+/g,'');
+  return /^\d{8}$/.test(d) ? d : '';
+}
+function dashDate(s){ // YYYYMMDD -> YYYY-MM-DD（供 type=date 输入框展示）
+  return (s && /^\d{8}$/.test(s)) ? s.replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3') : '';
+}
+
 function loadNavParams(){
-  // userStartSet=false 表示用户未主动改过起始日 → 渲染时自动跟随快照最新交易日
   let p={start:'__AUTO__',userStartSet:false,capital:20000,rebal:10,comm:0.0001,bench:'cyb',mode:'auto'};
-  try{ const s=JSON.parse(localStorage.getItem(NAV_KEY)); if(s) p=Object.assign(p,s); }catch(e){}
+  try{
+    const s=JSON.parse(localStorage.getItem(NAV_KEY));
+    if(s){
+      // 规范化起始日，避免带横杠的旧值污染后续字符串比较
+      p.start = (s.start==='__AUTO__'||!s.start) ? '__AUTO__' : (normalizeDate(s.start)||'__AUTO__');
+      p.userStartSet = !!s.userStartSet;
+      if(typeof s.capital==='number') p.capital=s.capital;
+      if(typeof s.rebal==='number') p.rebal=s.rebal;
+      if(typeof s.comm==='number') p.comm=s.comm;
+      if(s.bench) p.bench=s.bench;
+      if(s.mode) p.mode=s.mode;
+    }
+  }catch(e){}
   return p;
 }
 /* 快照最新共同交易日（所有ETF都有的最晚日期） */
@@ -968,10 +992,25 @@ function navClearManual(){
 /* 主渲染：读取参数 → 模拟 → 画图表/表/汇总，并同步控件 */
 async function renderNav(){
   const p = loadNavParams();
-  // 默认起始日跟随快照最新交易日（仅当用户未主动改过起始日时；可解决旧 localStorage 带来的过早起始日）
-  if(!p.userStartSet){ const lt=latestTradeDate(); if(lt) p.start=lt; }
+  // 起始日解析（关键修复：避免旧持久化起始日 / 日期格式问题制造大量虚假回测记录）
+  const lt = latestTradeDate();
+  if(p.mode==='manual'){
+    // 手动模式：从最早登记日起算，使净值曲线覆盖全部已登记历史（而非被 latest 截断成 1 天）
+    const recs = loadManualRecords();
+    p.start = recs.length ? recs.slice().sort()[0] : (lt || '__AUTO__');
+  } else {
+    // 自动模式：每次刷新默认从最新交易日开始；仅当用户在本会话主动改过起始日输入框才尊重其输入
+    if(window.__navStartExplicit && p.start && p.start!=='__AUTO__'){
+      // 尊重用户本会话主动设置的起始日
+    } else if(lt){
+      p.start = lt;
+    } else {
+      p.start = '__AUTO__';
+    }
+  }
+  if(p.start==='__AUTO__' && lt) p.start = lt;
   const $ = id=>document.getElementById(id);
-  if($('navStart')) $('navStart').value=p.start;
+  if($('navStart')) $('navStart').value = (p.start && p.start!=='__AUTO__') ? dashDate(p.start) : '';
   if($('navCapital')) $('navCapital').value=p.capital;
   if($('navRebal')) $('navRebal').value=p.rebal;
   if($('navComm')) $('navComm').value=(p.comm*10000);
@@ -1010,10 +1049,15 @@ async function renderNav(){
 }
 
 /* 参数变更：保存并重渲染 */
-function onNavParamChange(){
+function onNavParamChange(ev){
   const p=loadNavParams();
   const $=id=>document.getElementById(id);
-  if($('navStart')){ p.start=$('navStart').value||p.start; p.userStartSet=true; }
+  if($('navStart')){
+    const nd=normalizeDate($('navStart').value);   // type=date 返回 YYYY-MM-DD，必须规范化
+    if(nd) p.start=nd;
+    // 仅当用户真正改了「起始日」输入框时，才在本会话内尊重其输入（避免旧持久化值制造大量历史回测）
+    if(ev && ev.target && ev.target.id==='navStart') window.__navStartExplicit=true;
+  }
   if($('navCapital')) p.capital=parseFloat($('navCapital').value)||p.capital;
   if($('navRebal')) p.rebal=parseInt($('navRebal').value)||p.rebal;
   if($('navComm')) p.comm=(parseFloat($('navComm').value)||1)/10000;
