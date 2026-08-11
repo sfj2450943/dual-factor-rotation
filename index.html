@@ -736,9 +736,16 @@ function showToast(msg){
 const NAV_KEY='dualFactorNavParams', NAV_MANUAL_KEY='dualFactorNavManual';
 
 function loadNavParams(){
-  let p={start:'2026-08-11',capital:20000,rebal:10,comm:0.0001,bench:'cyb',mode:'auto'};
+  // userStartSet=false 表示用户未主动改过起始日 → 渲染时自动跟随快照最新交易日
+  let p={start:'__AUTO__',userStartSet:false,capital:20000,rebal:10,comm:0.0001,bench:'cyb',mode:'auto'};
   try{ const s=JSON.parse(localStorage.getItem(NAV_KEY)); if(s) p=Object.assign(p,s); }catch(e){}
   return p;
+}
+/* 快照最新共同交易日（所有ETF都有的最晚日期） */
+function latestTradeDate(){
+  const ds=etfData.map(e=>e.fullDates&&e.fullDates.length?e.fullDates[e.fullDates.length-1]:null).filter(Boolean);
+  if(!ds.length) return null;
+  ds.sort(); return ds[ds.length-1];
 }
 function saveNavParams(p){ try{ localStorage.setItem(NAV_KEY, JSON.stringify(p)); }catch(e){} }
 function loadManualRecords(){ try{ const s=JSON.parse(localStorage.getItem(NAV_MANUAL_KEY)); return Array.isArray(s)?s:[]; }catch(e){ return []; } }
@@ -895,8 +902,12 @@ function drawNavChart(sim, bench, mode){
 
 /* 调仓记录表：紧凑主表 + 点击展开明细（设计点 A：用户已确认） */
 function renderRebalanceTable(rebalances){
-  if(!rebalances || !rebalances.length) return '<div style="color:var(--sub);padding:10px 0;">暂无调仓记录（若起始日后尚无调仓日，请稍候或检查起始日）</div>';
-  const rows = rebalances.map((r,i)=>{
+  const hint = '<div style="color:var(--sub);font-size:12px;padding:4px 0 8px;">提示：「自动」为由K线数据确定性回测的模拟调仓（非真实下单）；下表仅列出有实际买入/卖出的调仓日。</div>';
+  if(!rebalances || !rebalances.length) return hint+'<div style="color:var(--sub);padding:10px 0;">暂无调仓记录（若起始日后尚无调仓日，请稍候或检查起始日）</div>';
+  // 仅保留有实际买卖的记录（隐藏无交易的回测检查日）
+  const real = rebalances.filter(r=>r.sells.length || r.buys.length);
+  if(!real.length) return hint+'<div style="color:var(--sub);padding:10px 0;">起始日后尚无达标前5产生的实际调仓（策略空仓观望中）。</div>';
+  const rows = real.map((r,i)=>{
     const buyCodes = r.buys.map(b=>b.name).join('、')||'—';
     const buyAmt = r.buys.reduce((s,b)=>s+b.amount,0);
     const totalAfter = buyAmt + (r.buys.length? -0 : 0);
@@ -916,7 +927,7 @@ function renderRebalanceTable(rebalances){
       </tr>
       <tr class="rb-detail-row" id="rbd-${i}" style="display:none;"><td colspan="6">${detail}</td></tr>`;
   }).join('');
-  return `<table class="table rb-table"><thead><tr>
+  return hint+`<table class="table rb-table"><thead><tr>
       <th>调仓日</th><th>类型</th><th>买入标的(前5)</th><th>买入总额</th><th>佣金</th><th>调仓后市值</th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
@@ -957,6 +968,8 @@ function navClearManual(){
 /* 主渲染：读取参数 → 模拟 → 画图表/表/汇总，并同步控件 */
 async function renderNav(){
   const p = loadNavParams();
+  // 默认起始日跟随快照最新交易日（仅当用户未主动改过起始日时；可解决旧 localStorage 带来的过早起始日）
+  if(!p.userStartSet){ const lt=latestTradeDate(); if(lt) p.start=lt; }
   const $ = id=>document.getElementById(id);
   if($('navStart')) $('navStart').value=p.start;
   if($('navCapital')) $('navCapital').value=p.capital;
@@ -985,7 +998,8 @@ async function renderNav(){
     else{
       const f=sim.finalTotal||p.capital, ret=sim.retPct||0;
       const endD = sim.nav? sim.nav[sim.nav.length-1].date : '';
-      let html = `期末总资产 <b style="color:var(--gold)">¥${f.toFixed(3)}</b> ｜ 累计收益 <b style="color:${ret>=0?'#ff4d4f':'#1ec77d'}">${ret>=0?'+':''}${ret.toFixed(2)}%</b> ｜ 调仓 ${sim.rebalances?sim.rebalances.length:0} 次 ｜ 区间 ${sim.actualStart} ~ ${endD}`;
+      const realCnt = sim.rebalances? sim.rebalances.filter(r=>r.sells.length||r.buys.length).length : 0;
+      let html = `期末总资产 <b style="color:var(--gold)">¥${f.toFixed(3)}</b> ｜ 累计收益 <b style="color:${ret>=0?'#ff4d4f':'#1ec77d'}">${ret>=0?'+':''}${ret.toFixed(2)}%</b> ｜ 实际调仓 ${realCnt} 次 ｜ 区间 ${sim.actualStart} ~ ${endD}`;
       if(sim.fallback) html += ` ｜ <span style="color:var(--gold)">注：起始日 ${p.start} 暂无行情，已用最新交易日 ${sim.actualStart} 演示</span>`;
       $('navSummary').innerHTML = html;
     }
@@ -999,7 +1013,7 @@ async function renderNav(){
 function onNavParamChange(){
   const p=loadNavParams();
   const $=id=>document.getElementById(id);
-  if($('navStart')) p.start=$('navStart').value||p.start;
+  if($('navStart')){ p.start=$('navStart').value||p.start; p.userStartSet=true; }
   if($('navCapital')) p.capital=parseFloat($('navCapital').value)||p.capital;
   if($('navRebal')) p.rebal=parseInt($('navRebal').value)||p.rebal;
   if($('navComm')) p.comm=(parseFloat($('navComm').value)||1)/10000;
