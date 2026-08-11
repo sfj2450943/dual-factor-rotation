@@ -480,9 +480,11 @@ function jsonpKline(url){
 
 /* ===== 真实快照兜底（同源 data.json，绕过所有网络封锁）=====
    当东财/腾讯/公共代理全部不可达（如某些家庭/公司 WiFi 屏蔽金融域名）时，
-   页面回退到与网站同源托管的真实行情快照 data.json（由 gen_snapshot.py 用新浪日线生成），
-   而不是假的示例死值。价格为新浪不复权实际价（与行情软件一致）。       */
-let SNAP = null;       // {code: [kline...]}
+   页面回退到与网站同源托管的真实行情快照 data.json（由 gen_snapshot.py 生成：
+   akshare→东财后复权优先，东财不可达时回退新浪；现价取自腾讯批量行情），
+   而不是假的示例死值。                                       */
+let SNAP = null;       // {code: [kline...]}  历史序列（后复权，用于因子/净值）
+let SNAP_PRICES = null;// {code: 最新不复权实际价}  用于「现价」列展示
 let SNAP_DATE = '';    // 快照生成日期
 async function loadSnapshot(){
   if(SNAP) return SNAP;
@@ -491,9 +493,10 @@ async function loadSnapshot(){
     if(!r.ok) throw new Error('HTTP '+r.status);
     const j = await r.json();
     SNAP = (j && j.klines) ? j.klines : null;
+    SNAP_PRICES = (j && j.prices) ? j.prices : null;
     SNAP_DATE = (j && j.generated) ? j.generated : '';
     return SNAP;
-  }catch(e){ SNAP = null; return null; }
+  }catch(e){ SNAP = null; SNAP_PRICES = null; return null; }
 }
 
 /* 纯函数：由后复权收盘价序列计算双因子，供实时计算与净值模拟复用 */
@@ -555,7 +558,11 @@ async function fetchAll(){
       if(sk && sk.length){
         computeFromKlines(e, sk);
         e.live = false; e.snap = true;            // 标记为快照兜底（真数据）
-        try{ const c = sk.map(x=>parseFloat(x.split(',')[2])); e.price = c[c.length-1]; }catch(_){}
+        // 现价：优先用快照里单独存的不复权实际价（腾讯批量行情），避免后复权序列虚高
+        try{
+          e.price = (SNAP_PRICES && SNAP_PRICES[e.code] != null) ? SNAP_PRICES[e.code]
+                    : sk.map(x=>parseFloat(x.split(',')[2])).slice(-1)[0];
+        }catch(_){}
       }else{
         const ex = EXAMPLE[e.code];               // 连快照也没有 → 回退示例数据(假)
         if(ex){ e.price=ex.price; e.adjClose=ex.price; e.ma20=ex.ma20; e.vol60=ex.vol60; e.valid=true; e.live=false; e.snap=false; }
@@ -676,7 +683,7 @@ function setStatus(type, text){
   bar.className = 'status-bar ' + type;
   document.getElementById('statusText').textContent = text;
   document.getElementById('dataSrc').textContent =
-    type==='ok' ? '东方财富（后复权）' : (type==='warn' && SNAP_DATE ? '新浪日线快照('+SNAP_DATE+')' : (type==='warn' ? '东方财富 + 示例兜底' : '—'));
+    type==='ok' ? '东方财富（后复权）' : (type==='warn' && SNAP_DATE ? '真实行情快照('+SNAP_DATE+')' : (type==='warn' ? '东方财富 + 示例兜底' : '—'));
 }
 
 /* ===== 手动刷新（无定时自动刷新）===== */
@@ -691,7 +698,7 @@ async function loadAndRender(){
   const validCnt = etfData.filter(e=>e.valid).length;
   if(validCnt===0) setStatus('error','实时行情与快照均不可用，请检查网络后手动刷新');
   else if(liveCnt === N) setStatus('ok', `数据已更新 · 来源东方财富（后复权）`);
-  else if(snapCnt > 0) setStatus('warn', `实时通道被网络拦截 · 已加载真实快照 ${snapCnt}/${N} 只（新浪日线，截至 ${SNAP_DATE}）`);
+  else if(snapCnt > 0) setStatus('warn', `实时通道被网络拦截 · 已加载真实行情快照 ${snapCnt}/${N} 只（截至 ${SNAP_DATE}）`);
   else setStatus('warn', `已获取 ${liveCnt}/${N} 只实时行情，其余 ${N-liveCnt} 只使用示例值`);
 }
 function manualRefresh(){
