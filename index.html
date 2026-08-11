@@ -487,6 +487,7 @@ function jsonpKline(url){
 let SNAP = null;       // {code: [kline...]}  历史序列（后复权，用于因子/净值）
 let SNAP_PRICES = null;// {code: 最新不复权实际价}  用于「现价」列展示
 let SNAP_DATE = '';    // 快照生成日期
+let SNAP_SOURCE = '';  // 快照数据源标识（data.json 的 source 字段，如 asharehub_hfq / baostock / sina_raw）
 async function loadSnapshot(){
   if(SNAP) return SNAP;
   try{
@@ -496,8 +497,18 @@ async function loadSnapshot(){
     SNAP = (j && j.klines) ? j.klines : null;
     SNAP_PRICES = (j && j.prices) ? j.prices : null;
     SNAP_DATE = (j && j.generated) ? j.generated : '';
+    SNAP_SOURCE = (j && j.source) ? j.source : '';
     return SNAP;
   }catch(e){ SNAP = null; SNAP_PRICES = null; return null; }
+}
+
+/* 据 data.json 的 source 字段返回状态栏展示的快照数据源名称（避免硬编码 BaoStock 造成的误导） */
+function snapSrcLabel(){
+  const s = (SNAP_SOURCE||'').toLowerCase();
+  if(s.includes('asharehub')) return 'AShareHub';
+  if(s.includes('baostock')) return 'BaoStock';
+  if(s.includes('sina'))     return '新浪';
+  return '行情';
 }
 
 /* 纯函数：由后复权收盘价序列计算双因子，供实时计算与净值模拟复用 */
@@ -545,14 +556,14 @@ function computeFromKlines(e, klines){
 }
 
 async function fetchAll(){
-  // PHASE 1：BaoStock 行情快照优先（同源 data.json，家里网络必成功，秒开渲染）
+  // PHASE 1：同源 data.json 行情快照优先（家里网络必成功，秒开渲染）；数据源由 gen_snapshot.py 决定（当前 AShareHub 后复权）
   const snap = await loadSnapshot();
   let snapCnt = 0;
   etfData.forEach(e=>{
     const sk = snap && snap[e.code];
     if(sk && sk.length){
       computeFromKlines(e, sk);
-      e.live = false; e.snap = true;            // 标记为 BaoStock 快照（真数据）
+      e.live = false; e.snap = true;            // 标记为快照（真数据，来源见 SNAP_SOURCE）
       // 现价：优先用快照里单独存的不复权实际价（腾讯批量行情），避免后复权序列虚高
       try{
         e.price = (SNAP_PRICES && SNAP_PRICES[e.code] != null) ? SNAP_PRICES[e.code]
@@ -565,14 +576,14 @@ async function fetchAll(){
       else { e.valid=false; e.live=false; }
     }
   });
-  compute(); render(); renderNav();             // 先用 akshare 快照即时渲染
-  setStatus('warn', `已加载 BaoStock 行情快照（截至 ${SNAP_DATE}），正在后台尝试实时刷新…`);
+  compute(); render(); renderNav();             // 先用快照即时渲染
+  setStatus('warn', `已加载 ${snapSrcLabel()} 行情快照（截至 ${SNAP_DATE}），正在后台尝试实时刷新…`);
   // PHASE 2：后台实时升级（东财/腾讯），成功则覆盖、增量重渲染
   await backgroundLiveUpgrade();
 }
 
 /* 后台异步尝试实时行情（东财 → 腾讯兜底），成功则用后复权序列覆盖快照值并增量重渲染；
-   失败（如家里网络封东财但腾讯可达）则静默保持 akshare 快照。
+   失败（如家里网络封东财但腾讯可达）则静默保持快照。
    关键：用后复权(rehab=2)序列跑 computeFromKlines，使 BIAS20/Vol60/250日涨幅 与 NAV 均为后复权口径。 */
 async function backgroundLiveUpgrade(){
   await Promise.all(etfData.map(async e=>{
@@ -706,19 +717,19 @@ function setStatus(type, text){
   bar.className = 'status-bar ' + type;
   document.getElementById('statusText').textContent = text;
   document.getElementById('dataSrc').textContent =
-    type==='ok' ? '东方财富/腾讯实时（后复权）' : (type==='warn' && SNAP_DATE ? 'BaoStock 行情快照('+SNAP_DATE+')' : (type==='warn' ? '东方财富 + 示例兜底' : '—'));
+    type==='ok' ? '东方财富/腾讯实时（后复权）' : (type==='warn' && SNAP_DATE ? snapSrcLabel()+' 行情快照('+SNAP_DATE+')' : (type==='warn' ? '东方财富 + 示例兜底' : '—'));
 }
 
 /* ===== 手动刷新（无定时自动刷新）===== */
 async function loadAndRender(){
-  setStatus('loading','正在加载 BaoStock 行情快照…');
+  setStatus('loading','正在加载行情快照…');
   await fetchAll();                              // 内部：先快照渲染，再后台实时升级并重渲染
   const liveCnt = etfData.filter(e=>e.live).length;
   const snapCnt = etfData.filter(e=>e.snap).length;
   const validCnt = etfData.filter(e=>e.valid).length;
   if(validCnt===0) setStatus('error','行情快照与实时均不可用，请检查网络后手动刷新');
   else if(liveCnt === N) setStatus('ok', `数据已更新 · 来源东方财富/腾讯实时（后复权）`);
-  else if(snapCnt > 0) setStatus('warn', `实时通道被网络拦截 · 已加载 BaoStock 行情快照 ${snapCnt}/${N} 只（截至 ${SNAP_DATE}）`);
+  else if(snapCnt > 0) setStatus('warn', `实时通道被网络拦截 · 已加载 ${snapSrcLabel()} 行情快照 ${snapCnt}/${N} 只（截至 ${SNAP_DATE}）`);
   else setStatus('warn', `已获取 ${liveCnt}/${N} 只实时行情，其余 ${N-liveCnt} 只使用示例值`);
 }
 function manualRefresh(){
