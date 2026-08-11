@@ -566,21 +566,23 @@ async function fetchAll(){
   await backgroundLiveUpgrade();
 }
 
-/* 后台异步尝试实时行情（东财/腾讯），成功覆盖快照值并增量重渲染；
-   失败（如家里网络封东财）则静默保持 akshare 快照，不影响已渲染结果。 */
+/* 后台异步尝试实时行情（东财 → 腾讯兜底），成功则用后复权序列覆盖快照值并增量重渲染；
+   失败（如家里网络封东财但腾讯可达）则静默保持 akshare 快照。
+   关键：用后复权(rehab=2)序列跑 computeFromKlines，使 BIAS20/Vol60/250日涨幅 与 NAV 均为后复权口径。 */
 async function backgroundLiveUpgrade(){
   await Promise.all(etfData.map(async e=>{
-    try{
-      const k2 = await withTimeout(fetchKline(e.secid, 2), 8000, e.code);  // 后复权日线
-      if(!k2) return;
-      computeFromKlines(e, k2);
-      e.live = e.valid; e.snap = false;
-      // 显示价：尽量取不复权实际价(fqt=0)，与行情软件一致；失败则退用后复权价
-      try{
-        const k0 = await withTimeout(fetchKline(e.secid, 0), 8000, e.code+'_0');
-        if(k0){ const c = k0.map(x=>parseFloat(x.split(',')[2])); e.price = c[c.length-1]; }
-      }catch(_){}
-    }catch(_){}
+    let kl = null, price = null;
+    // 1) 东财后复权日线（含本机 server.js / 公共代理兜底，见 fetchKline）
+    try{ kl = await withTimeout(fetchKline(e.secid, 2), 9000, e.code); }catch(_){}
+    // 2) 东财被封 → 腾讯财经后复权日线（不同域名，绕过东财封锁；家里网络通常可达）
+    if(!kl){ try{ kl = await withTimeout(jsonpTencent(e.secid, 2), 13000, e.code+'_tx'); }catch(_){} }
+    if(!kl) return;                              // 实时全失败：保留快照（可能不复权）
+    computeFromKlines(e, kl);                    // 后复权序列 → 因子/NAV 同口径
+    e.live = e.valid; e.snap = false;
+    // 现价：优先不复权实际价（东财 fqt=0 / 腾讯 rehab=0），与行情软件一致
+    try{ const k0 = await withTimeout(fetchKline(e.secid, 0), 9000, e.code+'_0'); if(k0){ const c=k0.map(x=>parseFloat(x.split(',')[2])); price=c[c.length-1]; } }catch(_){}
+    if(price==null){ try{ const k0t = await withTimeout(jsonpTencent(e.secid, 0), 13000, e.code+'_tx0'); if(k0t){ const c=k0t.map(x=>parseFloat(x.split(',')[2])); price=c[c.length-1]; } }catch(_){} }
+    if(price!=null) e.price = price;
   }));
   compute(); render(); renderNav();             // 用实时覆盖后的结果重渲染
 }
