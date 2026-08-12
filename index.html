@@ -342,7 +342,7 @@
   </div>
 
   <footer>
-    <div>© 2026 双因子轮动 · 个人量化研究</div>
+    <div>© 2026 双因子轮动 · 个人量化研究 · <span id="appVer"></span> · 构建 <span id="buildTime"></span></div>
     <div class="risk">风险提示：本策略仅供参考，投资有风险，入市需谨慎。</div>
   </footer>
 </div>
@@ -350,6 +350,9 @@
 <div class="toast" id="toast" style="display:none;"></div>
 
 <script>
+/* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
+const APP_VERSION = "v2026.08.12";
+const BUILD_TIME = "2026/8/12 23:15:47（本地构建）";
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
@@ -1082,6 +1085,12 @@ function onNavParamChange(ev){
 }
 
 function init(){
+  const $f=id=>document.getElementById(id);
+  if($f('appVer')) $f('appVer').textContent = APP_VERSION;
+  if($f('buildTime')){
+    const bt = BUILD_TIME.indexOf('__')===0 ? (new Date().toLocaleString('zh-CN',{hour12:false})+'（本地预览）') : BUILD_TIME;
+    $f('buildTime').textContent = bt;
+  }
   loadAndRender();
 }
 init();
