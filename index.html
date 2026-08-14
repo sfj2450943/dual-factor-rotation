@@ -352,7 +352,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 00:06:47（本地构建）";
+const BUILD_TIME = "2026/8/15 00:15:46（本地构建）";
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
@@ -937,7 +937,7 @@ function drawNavChart(sim, bench, mode){
   let benchLine='';
   if(benchPts && mode==='norm'){
     const n=Math.min(strat.length, benchPts.length);
-    benchLine = `<polyline points="${Array.from({length:n},(_,i)=>`${x(i).toFixed(1)},${y(benchPts[i].v).toFixed(1)}`).join(' ')}" fill="none" stroke="#4d8bff" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+    benchLine = `<polyline points="${Array.from({length:n},(_,i)=>`${x(i).toFixed(1)},${y(benchPts[i].norm).toFixed(1)}`).join(' ')}" fill="none" stroke="#4d8bff" stroke-width="1.6" stroke-dasharray="4 3"/>`;
   }
   const last=strat[strat.length-1];
   const baseRef = mode==='norm'?1:nav[0].total;
