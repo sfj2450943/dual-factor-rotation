@@ -352,7 +352,18 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 00:27:08（本地构建）";
+const BUILD_TIME = "2026/8/15 00:36:55（本地构建）";
+/* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
+   GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
+(function(){
+  try{
+    const u=new URL(location.href);
+    if(!u.searchParams.get('v')){
+      u.searchParams.set('v', BUILD_TIME && BUILD_TIME.indexOf('__')!==0 ? BUILD_TIME : String(Date.now()));
+      location.replace(u.toString());
+    }
+  }catch(e){}
+})();
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
