@@ -352,7 +352,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 00:36:55（本地构建）";
+const BUILD_TIME = "2026/8/15 00:50:19（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -505,6 +505,7 @@ let SNAP = null;       // {code: [kline...]}  历史序列（后复权，用于�
 let SNAP_PRICES = null;// {code: 最新不复权实际价}  用于「现价」列展示
 let SNAP_DATE = '';    // 快照生成日期
 let SNAP_SOURCE = '';  // 快照数据源标识（data.json 的 source 字段，如 asharehub_hfq / baostock / sina_raw）
+let SNAP_BENCHMARKS = null; // {bid:{label,klines:[]}}  快照中的基准数据（单独保存，SNAP 只存 klines）
 async function loadSnapshot(){
   if(SNAP) return SNAP;
   try{
@@ -513,10 +514,11 @@ async function loadSnapshot(){
     const j = await r.json();
     SNAP = (j && j.klines) ? j.klines : null;
     SNAP_PRICES = (j && j.prices) ? j.prices : null;
+    SNAP_BENCHMARKS = (j && j.benchmarks) ? j.benchmarks : null;
     SNAP_DATE = (j && j.generated) ? j.generated : '';
     SNAP_SOURCE = (j && j.source) ? j.source : '';
     return SNAP;
-  }catch(e){ SNAP = null; SNAP_PRICES = null; return null; }
+  }catch(e){ SNAP = null; SNAP_PRICES = null; SNAP_BENCHMARKS = null; return null; }
 }
 
 /* 据 data.json 的 source 字段返回状态栏展示的快照数据源名称（避免硬编码 BaoStock 造成的误导） */
@@ -900,7 +902,7 @@ function simulateNav(p, rebalDays){
    注意：不同基准源日期格式不同（AShareHub=YYYYMMDD，新浪/BaoStock=YYYY-MM-DD），
    必须先 normalizeDate，否则带横杠日期与 startDate='20260811' 比较会全部失败、基准线不显示。 */
 function benchmarkSeries(bid, startDate){
-  const b = SNAP && SNAP.benchmarks && SNAP.benchmarks[bid];
+  const b = SNAP_BENCHMARKS && SNAP_BENCHMARKS[bid];
   if(!b || !b.klines || !b.klines.length) return null;
   const pairs=b.klines.map(k=>{
     const p=k.split(',');
