@@ -352,7 +352,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 00:15:46（本地构建）";
+const BUILD_TIME = "2026/8/15 00:27:08（本地构建）";
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
@@ -918,7 +918,7 @@ function drawNavChart(sim, bench, mode){
   }else{
     strat=nav.map(n=>({date:n.date, v:n.total}));
   }
-  const allVals = strat.map(s=>s.v).concat(benchPts?benchPts.map(b=>b.v):[]);
+  const allVals = strat.map(s=>s.v).concat(benchPts?benchPts.map(b=>b.norm):[]);
   let min=Math.min(...allVals), max=Math.max(...allVals);
   if(min===max){ min-=0.01; max+=0.01; }
   const range=max-min;
