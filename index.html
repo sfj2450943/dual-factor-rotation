@@ -352,7 +352,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/14 23:48:54（本地构建）";
+const BUILD_TIME = "2026/8/15 00:06:47（本地构建）";
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
@@ -885,12 +885,19 @@ function simulateNav(p, rebalDays){
   return {nav,rebalances,finalTotal,retPct:(finalTotal/p.capital-1)*100,capital:p.capital,fallback,actualStart};
 }
 
-/* 基准曲线：从同源快照 benchmarks 取，归一化到 startDate 起=1.0 */
+/* 基准曲线：从同源快照 benchmarks 取，归一化到 startDate 起=1.0
+   注意：不同基准源日期格式不同（AShareHub=YYYYMMDD，新浪/BaoStock=YYYY-MM-DD），
+   必须先 normalizeDate，否则带横杠日期与 startDate='20260811' 比较会全部失败、基准线不显示。 */
 function benchmarkSeries(bid, startDate){
   const b = SNAP && SNAP.benchmarks && SNAP.benchmarks[bid];
   if(!b || !b.klines || !b.klines.length) return null;
-  const dates=b.klines.map(k=>k.split(',')[0]);
-  const closes=b.klines.map(k=>parseFloat(k.split(',')[2]));
+  const pairs=b.klines.map(k=>{
+    const p=k.split(',');
+    return {d:normalizeDate(p[0]), c:parseFloat(p[2])};
+  }).filter(x=>x.d && !isNaN(x.c));
+  if(!pairs.length) return null;
+  const dates=pairs.map(x=>x.d);
+  const closes=pairs.map(x=>x.c);
   let idx=-1; for(let i=0;i<dates.length;i++){ if(dates[i]>=startDate){ idx=i; break; } }
   if(idx<0) return null;
   const sub=closes.slice(idx), subd=dates.slice(idx);
