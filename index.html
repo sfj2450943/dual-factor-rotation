@@ -352,7 +352,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/14 22:24:22（本地构建）";
+const BUILD_TIME = "2026/8/14 22:39:36（本地构建）";
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
@@ -543,8 +543,11 @@ function calcFactors(closes){
 /* ===== 由后复权日线计算双因子（果仁口径），并缓存完整序列供净值模拟 ===== */
 function computeFromKlines(e, klines){
   // 对齐 (date, close)，过滤无效值
-  const pairs = klines.map(k=>{ const p=k.split(','); return {d:p[0], c:parseFloat(p[2])}; })
-                      .filter(x=>!isNaN(x.c));
+  // 统一日期为 YYYYMMDD：快照(data.json)本就是该格式；东财/腾讯实时 K 线为 YYYY-MM-DD（带横杠）。
+  // 若不归一，实时数据写入 e.fullDates 后整张日历带横杠，与锚点 '20260811' 的字符串比较全部错位，
+  // 导致自动模式把起点误判为"晚于最新行情"而回退到最新日，8/11 调仓在历史模式下消失。
+  const pairs = klines.map(k=>{ const p=k.split(','); return {d:normalizeDate(p[0]), c:parseFloat(p[2])}; })
+                      .filter(x=>!isNaN(x.c) && x.d);
   const dates = pairs.map(x=>x.d);
   const closes = pairs.map(x=>x.c);
   e.fullDates = dates;          // 完整日期序列（YYYY-MM-DD，升序）
