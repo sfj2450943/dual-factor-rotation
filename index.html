@@ -352,7 +352,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/12 23:15:47（本地构建）";
+const BUILD_TIME = "2026/8/14 22:05:29（本地构建）";
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
@@ -765,6 +765,8 @@ function dashDate(s){ // YYYYMMDD -> YYYY-MM-DD（供 type=date 输入框展示�
   return (s && /^\d{8}$/.test(s)) ? s.replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3') : '';
 }
 
+// 自动模式净值模拟锚点：双因子策略启动日。固定不随"今天"漂移，使历史调仓稳定可见（如 8/11 首买）。
+const NAV_ANCHOR_START = '20260811';
 function loadNavParams(){
   let p={start:'__AUTO__',userStartSet:false,capital:20000,rebal:10,comm:0.0001,bench:'cyb',mode:'auto'};
   try{
@@ -1016,13 +1018,10 @@ async function renderNav(){
     const recs = loadManualRecords();
     p.start = recs.length ? recs.slice().sort()[0] : (lt || '__AUTO__');
   } else {
-    // 自动模式：每次刷新默认从最新交易日开始；仅当用户在本会话主动改过起始日输入框才尊重其输入
-    if(window.__navStartExplicit && p.start && p.start!=='__AUTO__'){
-      // 尊重用户本会话主动设置的起始日
-    } else if(lt){
-      p.start = lt;
-    } else {
-      p.start = '__AUTO__';
+    // 自动模式：默认从策略锚点(2026-08-11)起算，覆盖完整历史调仓；
+    // 若用户曾主动设置过起始日(localStorage 中已是有效日期)，则尊重其设置，不再跟随最新交易日漂移
+    if(p.start==='__AUTO__' || !p.start){
+      p.start = NAV_ANCHOR_START;
     }
   }
   if(p.start==='__AUTO__' && lt) p.start = lt;
