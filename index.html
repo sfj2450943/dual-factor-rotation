@@ -352,7 +352,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/14 22:05:29（本地构建）";
+const BUILD_TIME = "2026/8/14 22:24:22（本地构建）";
 /* ===== 标的清单：12只ETF（统一池，不再区分进攻/防守）=====
    字段：secid 东财 secid（market.code，1=上交所 0=深交所）
         code 代码 name 名称 holding 是否当前持仓 holdDays 已持有天数
@@ -497,7 +497,7 @@ let SNAP_SOURCE = '';  // 快照数据源标识（data.json 的 source 字段，
 async function loadSnapshot(){
   if(SNAP) return SNAP;
   try{
-    const r = await fetch('data.json', {cache:'no-store'});
+    const r = await fetch('data.json?v='+Date.now(), {cache:'no-store'});
     if(!r.ok) throw new Error('HTTP '+r.status);
     const j = await r.json();
     SNAP = (j && j.klines) ? j.klines : null;
