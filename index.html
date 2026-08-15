@@ -76,6 +76,15 @@
   .b-buy{background:rgba(30,199,125,.16);color:var(--down);}
   .b-switch{background:rgba(77,139,255,.16);color:var(--blue);}
 
+  /* 概览精简布局（仅 现有持仓 / 下次调仓日） */
+  .ov-line{display:flex;align-items:flex-start;gap:14px;padding:12px 2px;border-bottom:1px dashed var(--line);}
+  .ov-line:last-child{border-bottom:none;}
+  .ov-label{flex:0 0 84px;font-size:.92rem;color:var(--sub);font-weight:600;padding-top:5px;}
+  .ov-value{flex:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:1rem;font-weight:700;color:var(--text);}
+  .ov-chip{background:rgba(240,160,32,.12);color:var(--gold);border:1px solid rgba(240,160,32,.25);
+    padding:5px 12px;border-radius:9px;font-size:.95rem;font-weight:700;white-space:nowrap;}
+  .ov-chip .c{color:var(--sub);font-weight:500;font-size:.78rem;margin-left:6px;}
+
   /* 规则卡 */
   .rule-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
   .rule-box{background:var(--card2);border:1px solid var(--line);border-radius:12px;padding:14px 16px;}
@@ -212,11 +221,14 @@
     <div class="card-body">
       <div class="overview-grid single">
         <div class="ov-item single">
-          <div class="ov-pool">统一池 · 12 ETF</div>
-          <div class="ov-name" id="ovTopName">--</div>
-          <div class="ov-row"><span class="l">当前持仓</span><span id="ovPos">--</span></div>
-          <div class="ov-row"><span class="l">今日操作</span><span id="ovAct">--</span></div>
-          <div class="ov-row"><span class="l">目标池(前5)</span><span id="ovTop">--</span></div>
+          <div class="ov-line">
+            <span class="ov-label">现有持仓</span>
+            <span class="ov-value" id="ovHoldings">--</span>
+          </div>
+          <div class="ov-line">
+            <span class="ov-label">下次调仓日</span>
+            <span class="ov-value" id="ovNextRebal">--</span>
+          </div>
         </div>
       </div>
     </div>
@@ -360,7 +372,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 17:55:13（本地构建）";
+const BUILD_TIME = "2026/8/15 18:21:02（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -715,12 +727,7 @@ function render(){
   const badge = actBadge(d);
   const held = list.filter(e=>e.holding);
 
-  // 概览
-  const set=(id,v)=>document.getElementById(id).innerHTML=v;
-  set('ovTopName', list[0].name+' · '+list[0].code);
-  set('ovPos', held.length ? ('<span class="badge b-hold">持有 '+held.length+' 只</span> '+held.map(e=>e.name+'('+e.rank+')').join('、')) : '<span class="badge b-buy">空仓</span>');
-  set('ovAct', '<span class="badge '+badge.cls+'">'+badge.t+'</span>');
-  set('ovTop', top5.map(e=>e.name).join('、'));
+  // 概览（现有持仓 / 下次调仓日 由 renderNav 依据最新一次系统调仓填充）
 
   // 决策
   document.getElementById('decHold').textContent = held.length ? ('持有 '+held.length+' 只') : '空仓';
@@ -787,6 +794,19 @@ function normalizeDate(s){
 }
 function dashDate(s){ // YYYYMMDD -> YYYY-MM-DD（供 type=date 输入框展示）
   return (s && /^\d{8}$/.test(s)) ? s.replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3') : '';
+}
+/* 从 yyyymmdd 起跳过周末，前进 n 个交易日，返回 yyyy-mm-dd（近似下次调仓日，忽略法定节假日） */
+function nextTradingDate(yyyymmdd, n){
+  if(!yyyymmdd || !/^\d{8}$/.test(yyyymmdd) || !(n>0)) return '--';
+  const d=new Date(+yyyymmdd.slice(0,4), +yyyymmdd.slice(4,6)-1, +yyyymmdd.slice(6,8));
+  let cnt=0;
+  while(cnt<n){
+    d.setDate(d.getDate()+1);
+    const w=d.getDay();
+    if(w>=1 && w<=5) cnt++;   // 跳过周六(6)/周日(0)
+  }
+  const m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return d.getFullYear()+'-'+m+'-'+day;
 }
 
 // 自动模式净值模拟锚点：双因子策略启动日。固定不随"今天"漂移，使历史调仓稳定可见（如 8/11 首买）。
@@ -1219,6 +1239,22 @@ async function renderNav(){
     }
   }
   if($('navRebTable')) $('navRebTable').innerHTML = renderRebalanceTable(sim.rebalances);
+  // 策略概览：现有持仓 = 最新一笔有买入的系统调仓标的（与 调仓记录 买入标的名称一致）；
+  //           下次调仓日 = 该调仓日 + rebal 个交易日。
+  const realReb = (sim.rebalances && sim.rebalances.length) ? sim.rebalances.filter(r=>r.buys && r.buys.length) : [];
+  const lastReb = realReb.length ? realReb[realReb.length-1] : null;
+  const $ovH=document.getElementById('ovHoldings'), $ovN=document.getElementById('ovNextRebal');
+  if($ovH){
+    if(lastReb){
+      $ovH.innerHTML = lastReb.buys.map(b=>`<span class="ov-chip">${b.name}<span class="c">${b.code}</span></span>`).join('');
+    }else{
+      $ovH.innerHTML = '<span style="color:var(--sub);font-weight:500;">空仓（暂无系统调仓记录）</span>';
+    }
+  }
+  if($ovN){
+    const base = lastReb ? lastReb.date : (sim.actualStart || p.start);
+    $ovN.textContent = nextTradingDate(base, p.rebal);
+  }
   if($('navExportBtn')) $('navExportBtn').onclick=()=>exportNavCSV(sim,p);
   if($('navChartMode')) $('navChartMode').onchange=()=>{ window.__navChartMode=$('navChartMode').value; renderNav(); };
 }
