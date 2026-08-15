@@ -145,12 +145,12 @@
   @keyframes slide{from{opacity:0;transform:translate(-50%,-16px);}to{opacity:1;transform:translate(-50%,0);}}
 
   /* 净值统计 */
-  .nav-params{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;}
-  .nav-params label{display:flex;flex-direction:column;font-size:.76rem;color:var(--sub);gap:4px;}
+  .nav-params{display:flex;flex-wrap:nowrap;gap:12px;align-items:flex-end;}
+  .nav-params label{display:flex;flex-direction:column;font-size:.76rem;color:var(--sub);gap:4px;width:125px;flex-shrink:0;}
   .nav-params input,.nav-params select{background:var(--bg2);border:1px solid var(--line);color:var(--text);
-    border-radius:8px;padding:0 9px;font-size:.85rem;min-width:118px;height:36px;box-sizing:border-box;}
+    border-radius:8px;padding:0 9px;font-size:.85rem;width:100%;height:36px;box-sizing:border-box;min-width:0;}
   /* 模式分段控件 */
-  .nav-seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg2);height:36px;box-sizing:border-box;width:300px;margin-left:auto;}
+  .nav-seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg2);height:36px;box-sizing:border-box;width:300px;flex-shrink:0;margin-left:auto;}
   .nav-seg label{position:relative;cursor:pointer;margin:0;display:flex;align-items:stretch;flex:1;}
   .nav-seg input{position:absolute;opacity:0;pointer-events:none;}
   .nav-seg span{display:flex;align-items:center;justify-content:center;height:100%;width:100%;padding:0;font-size:.84rem;font-weight:600;color:var(--sub);
@@ -180,6 +180,9 @@
     .table{font-size:.82rem;}
     .table thead th,.table tbody td{padding:9px 6px;}
     .btn-group{width:100%;justify-content:flex-start;}
+    .nav-params{flex-wrap:wrap;}
+    .nav-params label{width:calc(50% - 6px);}
+    .nav-seg{width:100%;margin-left:0;}
   }
 </style>
 </head>
@@ -355,7 +358,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 15:04:08（本地构建）";
+const BUILD_TIME = "2026/8/15 15:13:08（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
