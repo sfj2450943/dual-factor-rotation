@@ -77,10 +77,10 @@
   .b-switch{background:rgba(77,139,255,.16);color:var(--blue);}
 
   /* 概览精简布局（仅 现有持仓 / 下次调仓日） */
-  .ov-line{display:flex;align-items:flex-start;gap:14px;padding:12px 2px;border-bottom:1px dashed var(--line);}
+  .ov-line{display:flex;align-items:baseline;gap:14px;padding:12px 2px;border-bottom:1px dashed var(--line);}
   .ov-line:last-child{border-bottom:none;}
-  .ov-label{flex:0 0 84px;font-size:.92rem;color:var(--sub);font-weight:600;padding-top:5px;}
-  .ov-value{flex:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:1rem;font-weight:700;color:var(--text);}
+  .ov-label{flex:0 0 84px;font-size:.92rem;color:var(--sub);font-weight:600;line-height:1.3;}
+  .ov-value{flex:1;display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:1rem;font-weight:700;color:var(--text);line-height:1.3;}
   .ov-chip{background:rgba(240,160,32,.12);color:var(--gold);border:1px solid rgba(240,160,32,.25);
     padding:5px 12px;border-radius:9px;font-size:.95rem;font-weight:700;white-space:nowrap;}
   .ov-chip .c{color:var(--sub);font-weight:500;font-size:.78rem;margin-left:6px;}
@@ -372,7 +372,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 18:21:02（本地构建）";
+const BUILD_TIME = "2026/8/15 18:25:31（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
