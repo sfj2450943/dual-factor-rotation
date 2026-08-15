@@ -359,7 +359,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 17:23:22（本地构建）";
+const BUILD_TIME = "2026/8/15 17:28:55（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -973,8 +973,8 @@ function drawNavChart(sim, bench, mode){
     grid += `<text x="${padL-6}" y="${yy+4}" fill="#8b98ad" font-size="10" text-anchor="end">${lab}</text>`;
   });
 
-  // 横轴：完整日期，动态密度
-  let xlab='';
+  // 横轴：完整日期 + 日期纵轴线（参考果仁网网格）
+  let xAxis='';
   let xtickIdx;
   if(n<=6){
     xtickIdx=[...Array(n).keys()];
@@ -985,12 +985,15 @@ function drawNavChart(sim, bench, mode){
   }
   xtickIdx.forEach((i, pos)=>{
     if(!nav[i]) return;
+    const tx=x(i);
+    // 纵轴网格线
+    xAxis += `<line x1="${tx}" y1="${padT}" x2="${tx}" y2="${H-padB}" stroke="#1f2940" stroke-width="1" stroke-dasharray="2 2"/>`;
     const d=dashDate(nav[i].date);
     const isFirst=pos===0, isLast=pos===xtickIdx.length-1;
-    let anchor='middle', tx=x(i);
-    if(isFirst){ anchor='start'; tx=Math.max(tx, padL+2); }
-    else if(isLast){ anchor='end'; tx=Math.min(tx, W-padR-2); }
-    xlab += `<text x="${tx}" y="${H-9}" fill="#8b98ad" font-size="10" text-anchor="${anchor}">${d}</text>`;
+    let anchor='middle', tx2=tx;
+    if(isFirst){ anchor='start'; tx2=Math.max(tx2, padL+2); }
+    else if(isLast){ anchor='end'; tx2=Math.min(tx2, W-padR-2); }
+    xAxis += `<text x="${tx2}" y="${H-9}" fill="#8b98ad" font-size="10" text-anchor="${anchor}">${d}</text>`;
   });
 
   const stratPts = strat.map((s,i)=>`${x(i).toFixed(1)},${y(s.v).toFixed(1)}`).join(' ');
@@ -1014,7 +1017,7 @@ function drawNavChart(sim, bench, mode){
     <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;overflow:visible;"
          data-tip="${tipJson}" data-mode="${mode}" data-bench-label="${bench?(bench.label||'基准'):''}"
          onmousemove="showNavTip(event,this)" onmouseleave="hideNavTip(this)">
-      ${grid}${xlab}
+      ${grid}${xAxis}
       <polyline points="${stratPts}" fill="none" stroke="#f0a020" stroke-width="2"/>
       ${benchLine}
       <circle cx="${x(strat.length-1)}" cy="${y(last.v)}" r="3.5" fill="${lastCol}"/>
