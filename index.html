@@ -359,7 +359,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 16:11:09（本地构建）";
+const BUILD_TIME = "2026/8/15 16:47:04（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -925,11 +925,12 @@ function benchmarkSeries(bid, startDate){
   return {label:b.label, norm: sub.map((c,i)=>({date:subd[i], norm:c/base}))};
 }
 
-/* 手写 SVG 净值曲线（不依赖任何 CDN 图表库）：策略线(金) + 基准线(蓝虚线, 仅归一化模式) */
+/* 手写 SVG 净值曲线：策略线(金) + 基准线(蓝虚线, 仅归一化模式) */
 function drawNavChart(sim, bench, mode){
   if(!sim || !sim.nav || !sim.nav.length) return '<div style="color:var(--sub);padding:20px;text-align:center;">暂无数据</div>';
   const W=680, H=300, padL=58, padR=18, padT=18, padB=30;
   const nav=sim.nav;
+  const n=nav.length;
   let strat, benchPts=null;
   if(mode==='norm'){
     const base=nav[0].total;
@@ -941,36 +942,128 @@ function drawNavChart(sim, bench, mode){
   const allVals = strat.map(s=>s.v).concat(benchPts?benchPts.map(b=>b.norm):[]);
   let min=Math.min(...allVals), max=Math.max(...allVals);
   if(min===max){ min-=0.01; max+=0.01; }
-  const range=max-min;
-  const x=i=> padL + (nav.length<=1?0:(i/(nav.length-1))*(W-padL-padR));
-  const y=v=> padT + (1-(v-min)/range)*(H-padT-padB);
-  let grid=''; const ticks=4;
-  for(let t=0;t<=ticks;t++){
-    const v=min+range*t/ticks, yy=y(v);
-    grid += `<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="#26314a" stroke-width="1"/>`;
-    const lab = mode==='norm'? v.toFixed(3) : '¥'+v.toFixed(0);
-    grid += `<text x="${padL-6}" y="${yy+4}" fill="#8b98ad" font-size="10" text-anchor="end">${lab}</text>`;
+  const baseRef = mode==='norm'?1:nav[0].total;
+
+  // 纵轴：归一化模式用百分比，动态间距（1%/2%/5%/10%）
+  let yTicks=[];
+  if(mode==='norm'){
+    const minPct=(min-baseRef)/baseRef*100, maxPct=(max-baseRef)/baseRef*100;
+    let step=1;
+    const span=Math.max(Math.abs(minPct),Math.abs(maxPct));
+    if(span>25) step=10;
+    else if(span>10) step=5;
+    else if(span>5) step=2;
+    else step=1;
+    const lo=Math.floor(minPct/step)*step, hi=Math.ceil(maxPct/step)*step;
+    min=baseRef*(1+lo/100); max=baseRef*(1+hi/100);
+    for(let p=lo;p<=hi;p+=step) yTicks.push({pct:p, v:baseRef*(1+p/100)});
+  }else{
+    const range=max-min;
+    for(let t=0;t<=4;t++) yTicks.push({v:min+range*t/4, label:'¥'+ (min+range*t/4).toFixed(0)});
   }
-  let xlab=''; const xticks=[0, Math.floor(nav.length/2), nav.length-1];
-  xticks.forEach(i=>{ if(nav[i]) xlab += `<text x="${x(i)}" y="${H-9}" fill="#8b98ad" font-size="10" text-anchor="middle">${nav[i].date.slice(5)}</text>`; });
+  const range=max-min||1;
+  const x=i=> padL + (n<=1?0:(i/(n-1))*(W-padL-padR));
+  const y=v=> padT + (1-(v-min)/range)*(H-padT-padB);
+
+  let grid='';
+  yTicks.forEach(tk=>{
+    const yy=y(tk.v);
+    grid += `<line x1="${padL}" y1="${yy}" x2="${W-padR}" y2="${yy}" stroke="#26314a" stroke-width="1"/>`;
+    const lab = mode==='norm'? (tk.pct>=0?'+':'')+tk.pct.toFixed(0)+'%' : tk.label;
+    grid += `<text x="${padL-6}" y="${yy+4}" fill="#8b98ad" font-size="10" text-anchor="end">${lab}</text>`;
+  });
+
+  // 横轴：完整日期，动态密度
+  let xlab='';
+  let xtickIdx;
+  if(n<=6){
+    xtickIdx=[...Array(n).keys()];
+  }else{
+    const count=Math.min(7, n);
+    xtickIdx=[];
+    for(let k=0;k<count;k++) xtickIdx.push(Math.round(k*(n-1)/(count-1)));
+  }
+  xtickIdx.forEach(i=>{
+    if(nav[i]){
+      const d=dashDate(nav[i].date);
+      xlab += `<text x="${x(i)}" y="${H-9}" fill="#8b98ad" font-size="10" text-anchor="middle">${d}</text>`;
+    }
+  });
+
   const stratPts = strat.map((s,i)=>`${x(i).toFixed(1)},${y(s.v).toFixed(1)}`).join(' ');
   let benchLine='';
   if(benchPts && mode==='norm'){
-    const n=Math.min(strat.length, benchPts.length);
-    benchLine = `<polyline points="${Array.from({length:n},(_,i)=>`${x(i).toFixed(1)},${y(benchPts[i].norm).toFixed(1)}`).join(' ')}" fill="none" stroke="#4d8bff" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+    const bn=Math.min(strat.length, benchPts.length);
+    benchLine = `<polyline points="${Array.from({length:bn},(_,i)=>`${x(i).toFixed(1)},${y(benchPts[i].norm).toFixed(1)}`).join(' ')}" fill="none" stroke="#4d8bff" stroke-width="1.6" stroke-dasharray="4 3"/>`;
   }
   const last=strat[strat.length-1];
-  const baseRef = mode==='norm'?1:nav[0].total;
   const lastCol = last.v>=baseRef ? '#ff4d4f' : '#1ec77d';   // 涨红 跌绿（A股惯例）
-  return `<svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;">
-    ${grid}${xlab}
-    <polyline points="${stratPts}" fill="none" stroke="#f0a020" stroke-width="2"/>
-    ${benchLine}
-    <circle cx="${x(strat.length-1)}" cy="${y(last.v)}" r="3.5" fill="${lastCol}"/>
-    <text x="${x(strat.length-1)-4}" y="${y(last.v)-8}" fill="${lastCol}" font-size="11" text-anchor="end">${mode==='norm'?last.v.toFixed(3):'¥'+last.v.toFixed(0)}</text>
-    <text x="${padL}" y="${padT+2}" fill="#f0a020" font-size="11">策略</text>
-    ${benchPts&&mode==='norm'?`<text x="${padL+38}" y="${padT+2}" fill="#4d8bff" font-size="11">${bench.label||'基准'}</text>`:''}
-  </svg>`;
+
+  // 鼠标悬停数据
+  const tipData = strat.map((s,i)=>({
+    date:s.date,
+    strat:{v:s.v, pct:(mode==='norm'?(s.v-baseRef)/baseRef*100:(s.v/baseRef-1)*100)},
+    bench: benchPts && i<benchPts.length ? {v:benchPts[i].norm, pct:(benchPts[i].norm-1)*100} : null
+  }));
+  const tipJson = JSON.stringify(tipData).replace(/"/g,'&quot;');
+
+  return `<div class="nav-chart-wrap" style="position:relative;">
+    <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;"
+         data-tip="${tipJson}" data-mode="${mode}" data-bench-label="${bench?(bench.label||'基准'):''}"
+         onmousemove="showNavTip(event,this)" onmouseleave="hideNavTip(this)">
+      ${grid}${xlab}
+      <polyline points="${stratPts}" fill="none" stroke="#f0a020" stroke-width="2"/>
+      ${benchLine}
+      <circle cx="${x(strat.length-1)}" cy="${y(last.v)}" r="3.5" fill="${lastCol}"/>
+      <text x="${x(strat.length-1)-4}" y="${y(last.v)-8}" fill="${lastCol}" font-size="11" text-anchor="end">${mode==='norm'?((last.v-1)*100).toFixed(2)+'%':'¥'+last.v.toFixed(0)}</text>
+    </svg>
+    <div class="nav-tooltip" style="display:none;position:absolute;pointer-events:none;padding:8px 10px;border-radius:6px;font-size:12px;line-height:1.6;z-index:10;background:var(--bg2);color:var(--text);border:1px solid var(--line);box-shadow:0 4px 12px rgba(0,0,0,.2);min-width:120px;"></div>
+  </div>`;
+}
+
+/* 净值图鼠标悬停 tooltip（参考果仁网：日期 + 色块 + 名称 + 收益率） */
+function showNavTip(evt, svg){
+  const wrap=svg.parentElement;
+  const tip=wrap.querySelector('.nav-tooltip');
+  if(!tip) return;
+  const raw=svg.getAttribute('data-tip');
+  if(!raw) return;
+  const data=JSON.parse(raw.replace(/&quot;/g,'"'));
+  const mode=svg.getAttribute('data-mode');
+  const benchLabel=svg.getAttribute('data-bench-label')||'基准';
+  const rect=svg.getBoundingClientRect();
+  const W=680, padL=58, padR=18;
+  const mx=evt.clientX-rect.left;
+  const plotLeft=rect.width*padL/W;
+  const plotRight=rect.width*(W-padR)/W;
+  let i=0;
+  if(data.length>1 && plotRight>plotLeft){
+    const frac=Math.max(0,Math.min(1,(mx-plotLeft)/(plotRight-plotLeft)));
+    i=Math.round(frac*(data.length-1));
+  }
+  i=Math.max(0,Math.min(i,data.length-1));
+  const d=data[i];
+  const pct=v=>(v>=0?'+':'')+v.toFixed(2)+'%';
+  let html=`<div style="font-weight:700;margin-bottom:4px;white-space:nowrap;">${dashDate(d.date)}</div>`;
+  html+=`<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;"><span style="display:inline-block;width:8px;height:8px;background:#f0a020;border-radius:2px;flex-shrink:0;"></span><span>策略</span><span style="margin-left:auto;font-weight:700;">${pct(d.strat.pct)}</span></div>`;
+  if(d.bench){
+    html+=`<div style="display:flex;align-items:center;gap:6px;white-space:nowrap;margin-top:2px;"><span style="display:inline-block;width:8px;height:8px;background:#4d8bff;border-radius:2px;flex-shrink:0;"></span><span>${benchLabel}</span><span style="margin-left:auto;font-weight:700;">${pct(d.bench.pct)}</span></div>`;
+  }
+  tip.innerHTML=html;
+  tip.style.display='block';
+  const tipW=tip.offsetWidth, tipH=tip.offsetHeight;
+  const wrapRect=wrap.getBoundingClientRect();
+  let left=evt.clientX-wrapRect.left+12;
+  let top=evt.clientY-wrapRect.top-tipH-8;
+  if(left+tipW>wrapRect.width) left=evt.clientX-wrapRect.left-tipW-12;
+  if(top<0) top=evt.clientY-wrapRect.top+12;
+  tip.style.left=left+'px';
+  tip.style.top=top+'px';
+}
+function hideNavTip(svg){
+  const wrap=svg.parentElement;
+  const tip=wrap.querySelector('.nav-tooltip');
+  if(tip) tip.style.display='none';
 }
 
 /* 调仓记录表：紧凑主表 + 点击展开明细（设计点 A：用户已确认） */
@@ -1085,6 +1178,10 @@ async function renderNav(){
       const endD = sim.nav? sim.nav[sim.nav.length-1].date : '';
       const realCnt = sim.rebalances? sim.rebalances.filter(r=>r.sells.length||r.buys.length).length : 0;
       let html = `期末总资产 <b style="color:var(--gold)">¥${f.toFixed(3)}</b> ｜ 累计收益 <b style="color:${ret>=0?'#ff4d4f':'#1ec77d'}">${ret>=0?'+':''}${ret.toFixed(2)}%</b> ｜ 实际调仓 ${realCnt} 次 ｜ 区间 ${sim.actualStart} ~ ${endD}`;
+      if(chartMode==='norm' && benchNorm){
+        html += ` ｜ <span style="display:inline-flex;align-items:center;gap:4px;font-size:.85rem;"><span style="display:inline-block;width:8px;height:8px;background:#f0a020;border-radius:2px;"></span>策略</span>`;
+        html += ` <span style="display:inline-flex;align-items:center;gap:4px;font-size:.85rem;"><span style="display:inline-block;width:8px;height:8px;background:#4d8bff;border-radius:2px;"></span>${benchNorm.label||'基准'}</span>`;
+      }
       if(sim.fallback) html += ` ｜ <span style="color:var(--gold)">注：起始日 ${p.start} 暂无行情，已用最新交易日 ${sim.actualStart} 演示</span>`;
       $('navSummary').innerHTML = html;
     }
