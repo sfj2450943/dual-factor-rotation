@@ -314,8 +314,9 @@
         <label>调仓间隔(交易日)<input type="number" id="navRebal" value="10" min="1" step="1" onchange="onNavParamChange()"></label>
         <label>佣金(万分之)<input type="number" id="navComm" value="1" min="0" step="0.1" onchange="onNavParamChange()"></label>
         <label>对比基准<select id="navBench" onchange="onNavParamChange()">
-          <option value="cyb">创业板全收益</option>
-          <option value="a500">A500全收益</option>
+          <option value="cyb">创业板指</option>
+          <option value="a500">中证A500</option>
+          <option value="hs300">沪深300</option>
           <option value="sp500">标普500ETF</option>
           <option value="ndx">纳斯达克100ETF</option>
         </select></label>
@@ -358,7 +359,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 15:22:40（本地构建）";
+const BUILD_TIME = "2026/8/15 16:11:09（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
