@@ -359,7 +359,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 17:15:37（本地构建）";
+const BUILD_TIME = "2026/8/15 17:23:22（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -928,7 +928,7 @@ function benchmarkSeries(bid, startDate){
 /* 手写 SVG 净值曲线：策略线(金) + 基准线(蓝虚线, 仅归一化模式) */
 function drawNavChart(sim, bench, mode){
   if(!sim || !sim.nav || !sim.nav.length) return '<div style="color:var(--sub);padding:20px;text-align:center;">暂无数据</div>';
-  const W=680, H=300, padL=58, padR=18, padT=18, padB=30;
+  const W=680, H=300, padL=48, padR=30, padT=18, padB=30;
   const nav=sim.nav;
   const n=nav.length;
   let strat, benchPts=null;
@@ -1010,8 +1010,8 @@ function drawNavChart(sim, bench, mode){
   }));
   const tipJson = JSON.stringify(tipData).replace(/"/g,'&quot;');
 
-  return `<div class="nav-chart-wrap" style="position:relative;">
-    <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;"
+  return `<div class="nav-chart-wrap" style="position:relative;overflow:visible;">
+    <svg viewBox="0 0 ${W} ${H}" width="100%" preserveAspectRatio="xMidYMid meet" style="display:block;overflow:visible;"
          data-tip="${tipJson}" data-mode="${mode}" data-bench-label="${bench?(bench.label||'基准'):''}"
          onmousemove="showNavTip(event,this)" onmouseleave="hideNavTip(this)">
       ${grid}${xlab}
