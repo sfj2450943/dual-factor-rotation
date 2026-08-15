@@ -122,8 +122,9 @@
   .dec-block .act{font-size:1.3rem;font-weight:800;margin-bottom:6px;}
   .dec-block .det{font-size:.9rem;color:var(--text);line-height:1.6;}
 
-  .btn{cursor:pointer;border:none;border-radius:8px;padding:8px 16px;font-weight:600;font-size:.85rem;
-    display:inline-flex;align-items:center;gap:6px;transition:all .2s;}
+  .btn{cursor:pointer;border:none;border-radius:8px;padding:0 16px;font-weight:600;font-size:.85rem;
+    display:inline-flex;align-items:center;justify-content:center;gap:6px;transition:all .2s;
+    height:36px;line-height:36px;box-sizing:border-box;}
   .btn-refresh{background:var(--blue);color:#fff;}
   .btn-refresh:hover{background:#3a78f0;transform:translateY(-1px);}
   .btn-refresh:disabled{opacity:.6;cursor:not-allowed;transform:none;}
@@ -149,10 +150,10 @@
   .nav-params input,.nav-params select{background:var(--bg2);border:1px solid var(--line);color:var(--text);
     border-radius:8px;padding:7px 9px;font-size:.85rem;min-width:118px;}
   /* 模式分段控件 */
-  .nav-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg2);}
-  .nav-seg label{position:relative;cursor:pointer;margin:0;}
+  .nav-seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--bg2);height:36px;box-sizing:border-box;}
+  .nav-seg label{position:relative;cursor:pointer;margin:0;display:flex;align-items:stretch;}
   .nav-seg input{position:absolute;opacity:0;pointer-events:none;}
-  .nav-seg span{display:block;padding:7px 18px;font-size:.84rem;font-weight:600;color:var(--sub);
+  .nav-seg span{display:flex;align-items:center;justify-content:center;padding:0 18px;font-size:.84rem;font-weight:600;color:var(--sub);
     transition:all .2s;border-left:1px solid var(--line);}
   .nav-seg label:first-child span{border-left:none;}
   .nav-seg input:checked + span{background:var(--gold);color:#1a1206;}
@@ -160,7 +161,7 @@
   .nav-toolbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 6px;}
   .nav-summary{font-size:.92rem;color:var(--text);}
   .nav-tools{display:flex;gap:8px;align-items:center;}
-  .nav-tools select{background:var(--bg2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:7px 9px;font-size:.82rem;}
+  .nav-tools select{background:var(--bg2);border:1px solid var(--line);color:var(--text);border-radius:8px;padding:0 9px;font-size:.82rem;height:36px;line-height:34px;box-sizing:border-box;}
   .nav-chart{margin:6px 0 4px;background:var(--bg2);border:1px solid var(--line);border-radius:12px;padding:8px;}
   .nav-reb-head{display:flex;justify-content:space-between;align-items:center;margin:14px 0 6px;font-weight:700;font-size:.95rem;}
   .nav-reb-btns{display:flex;gap:8px;}
@@ -352,7 +353,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 00:50:19（本地构建）";
+const BUILD_TIME = "2026/8/15 14:20:44（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
