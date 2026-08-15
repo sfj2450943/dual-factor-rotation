@@ -353,7 +353,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 14:24:46（本地构建）";
+const BUILD_TIME = "2026/8/15 14:32:54（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -1043,8 +1043,8 @@ async function renderNav(){
     p.start = recs.length ? recs.slice().sort()[0] : (lt || '__AUTO__');
   } else {
     // 自动模式：默认从策略锚点(2026-08-11)起算，覆盖完整历史调仓；
-    // 若用户曾主动设置过起始日(localStorage 中已是有效日期)，则尊重其设置，不再跟随最新交易日漂移
-    if(p.start==='__AUTO__' || !p.start){
+    // 只有用户在本会话真正改过起始日输入框，才尊重其设置；否则旧的 localStorage 起始日会截断历史曲线
+    if(p.start==='__AUTO__' || !p.start || !window.__navStartExplicit){
       p.start = NAV_ANCHOR_START;
     }
   }
