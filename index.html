@@ -359,7 +359,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 17:34:55（本地构建）";
+const BUILD_TIME = "2026/8/15 17:45:05（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -870,10 +870,20 @@ function simulateNav(p, rebalDays){
   const rbDays = (rebalDays && rebalDays.length) ? rebalDays : autoRebalDays({...p, start:actualStart});
   const rbSet=new Set(rbDays);
   let cash=p.capital, holdings={}, nav=[], rebalances=[];
+  let lastBuyTotal=0, lastRebalIdx=-1;  // 用于计算「本期收益」
   for(let i=0;i<cal.length;i++){
     const d=cal[i];
     if(rbSet.has(d)){
       const top5=top5AtDate(d); const sells=[], buys=[]; let commission=0;
+      // 卖出旧持仓前，先给上一期计算「本期收益」（持有市值 / 上次买入成本 - 1）
+      if(lastBuyTotal>0 && lastRebalIdx>=0){
+        let holdingsValue=0;
+        for(const code in holdings){
+          const e=etfByCode[code]; if(!e) continue;
+          const px=priceAtD(e,d); if(px!=null) holdingsValue+=holdings[code]*px;
+        }
+        rebalances[lastRebalIdx].periodReturn = (holdingsValue/lastBuyTotal-1)*100;
+      }
       for(const code in holdings){
         const e=etfByCode[code]; if(!e) continue;
         const px=priceAtD(e,d); if(px==null) continue;
@@ -893,6 +903,8 @@ function simulateNav(p, rebalDays){
         }
       }
       rebalances.push({date:d,type:'auto',sells,buys,commission});
+      lastRebalIdx = rebalances.length-1;
+      lastBuyTotal = buys.reduce((s,b)=>s+b.amount,0);
     }
     let total=cash;
     for(const code in holdings){
@@ -900,6 +912,15 @@ function simulateNav(p, rebalDays){
       const px=priceAtD(e,d); if(px!=null) total+=holdings[code]*px;
     }
     nav.push({date:d,total});
+  }
+  // 最后一期尚未卖出：用最新交易日收盘价计算持有市值，得出本期收益
+  if(lastBuyTotal>0 && lastRebalIdx>=0 && !rebalances[lastRebalIdx].periodReturn){
+    let holdingsValue=0;
+    for(const code in holdings){
+      const e=etfByCode[code]; if(!e) continue;
+      const px=priceAtD(e,maxD); if(px!=null) holdingsValue+=holdings[code]*px;
+    }
+    rebalances[lastRebalIdx].periodReturn = (holdingsValue/lastBuyTotal-1)*100;
   }
   const finalTotal=nav.length?nav[nav.length-1].total:p.capital;
   return {nav,rebalances,finalTotal,retPct:(finalTotal/p.capital-1)*100,capital:p.capital,fallback,actualStart};
@@ -1083,6 +1104,9 @@ function renderRebalanceTable(rebalances){
     const buyCodes = r.buys.map(b=>b.name).join('、')||'—';
     const buyAmt = r.buys.reduce((s,b)=>s+b.amount,0);
     const totalAfter = buyAmt + (r.buys.length? -0 : 0);
+    const pr = r.periodReturn;
+    const prText = (pr==null || isNaN(pr)) ? '—' : (pr>=0?'+':'')+pr.toFixed(2)+'%';
+    const prCol = (pr==null || isNaN(pr)) ? 'var(--sub)' : (pr>=0?'#ff4d4f':'#1ec77d');
     const detail = `<div class="rb-detail">
         <div class="rb-sub">卖出（${r.sells.length} 只）</div>
         ${r.sells.length? r.sells.map(s=>`<div>${s.name} · ${s.price.toFixed(3)} × ${s.shares.toFixed(0)} = ¥${s.amount.toFixed(2)}（佣¥${s.comm.toFixed(2)}）</div>`).join('') : '<div style="color:var(--sub)">—（建仓，无卖出）</div>'}
@@ -1093,14 +1117,15 @@ function renderRebalanceTable(rebalances){
         <td>${r.date}</td>
         <td><span class="state-tag ${r.type==='manual'?'st-fail':'st-target'}">${r.type==='manual'?'手动':'自动'}</span></td>
         <td style="text-align:left">${buyCodes}</td>
+        <td style="color:${prCol};font-weight:700;">${prText}</td>
         <td>¥${buyAmt.toFixed(0)}</td>
         <td>¥${r.commission.toFixed(2)}</td>
         <td>¥${totalAfter.toFixed(0)}</td>
       </tr>
-      <tr class="rb-detail-row" id="rbd-${i}" style="display:none;"><td colspan="6">${detail}</td></tr>`;
+      <tr class="rb-detail-row" id="rbd-${i}" style="display:none;"><td colspan="7">${detail}</td></tr>`;
   }).join('');
   return hint+`<table class="table rb-table"><thead><tr>
-      <th>调仓日</th><th>类型</th><th>买入标的(前5)</th><th>买入总额</th><th>佣金</th><th>调仓后市值</th>
+      <th>调仓日</th><th>类型</th><th>买入标的(前5)</th><th>本期收益</th><th>买入总额</th><th>佣金</th><th>调仓后市值</th>
     </tr></thead><tbody>${rows}</tbody></table>`;
 }
 function toggleRb(i){ const el=document.getElementById('rbd-'+i); if(el) el.style.display = el.style.display==='none'?'table-row':'none'; }
