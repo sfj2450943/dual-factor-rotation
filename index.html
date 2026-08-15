@@ -292,7 +292,7 @@
         </div>
       </div>
       <div class="rule-note" style="margin-top:12px;">
-        说明：本页实时拉取行情并计算双因子，已部署为公开网址——手机（外网）、公司电脑或家庭网络直接打开网址、点「立即刷新」即可获取最新排名（无定时自动刷新，仅手动刷新）。数据通道（优先级）：<strong>浏览器直连东财</strong> → 网络封锁东财则走<strong>腾讯财经</strong>兜底（不同域名）→ 公共 CORS 代理 → 仍全部失败则加载与网站同源托管的<strong>真实行情快照</strong>（data.json，由新浪日线生成，绕过所有网络封锁，非假数）。<b>现价展示不复权实际价</b>（与行情软件一致）；BIAS20/Vol60 按果仁口径用<strong>后复权</strong>计算，故现价与 MA20 口径不同属正常（无分红标的如黄金三者等价）。持仓为手动标记，按真实持仓修改 <code>etfData</code> 的 <code>holding</code> 字段即可。
+        说明：本页实时拉取行情并计算双因子，已部署为公开网址——手机（外网）、公司电脑或家庭网络直接打开网址、点「立即刷新」即可获取最新排名（无定时自动刷新，仅手动刷新）。数据通道（优先级）：<strong>浏览器直连东财</strong> → 网络封锁东财则走<strong>腾讯财经</strong>兜底（不同域名）→ 公共 CORS 代理 → 仍全部失败则加载与网站同源托管的<strong>真实行情快照</strong>（data.json，由 AShareHub 后复权日线生成，绕过所有网络封锁，非假数）。<b>现价展示不复权实际价</b>（与行情软件一致）；BIAS20/Vol60 按果仁口径用<strong>后复权</strong>计算，故现价与 MA20 口径不同属正常（无分红标的如黄金，不复权价与后复权价等价）。持仓为手动标记，按真实持仓修改 <code>etfData</code> 的 <code>holding</code> 字段即可。
       </div>
     </div>
     <div class="meta">
@@ -358,7 +358,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 15:13:08（本地构建）";
+const BUILD_TIME = "2026/8/15 15:22:40（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
