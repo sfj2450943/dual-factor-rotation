@@ -154,6 +154,18 @@
     z-index:999;animation:slide .3s ease;}
   @keyframes slide{from{opacity:0;transform:translate(-50%,-16px);}to{opacity:1;transform:translate(-50%,0);}}
 
+  /* 乖离率减仓预警（拥挤度管理） */
+  .note{font-size:.86rem;color:var(--sub);line-height:1.6;margin-bottom:10px;}
+  .note a{text-decoration:none;}
+  .bias-w1{color:var(--gold);font-weight:700;}
+  .bias-w2{color:var(--attack);font-weight:700;}
+  .bias-w3{color:var(--up);font-weight:700;}
+  .badge.b-warn{background:rgba(255,77,79,.15);color:var(--up);border:1px solid rgba(255,77,79,.35);}
+  .badge.b-ok{background:rgba(30,199,125,.14);color:var(--down);border:1px solid rgba(30,199,125,.3);}
+  .warn-tags{display:inline-flex;gap:6px;margin-left:8px;}
+  .warn-tags span{background:rgba(240,160,32,.14);color:var(--gold);border:1px solid rgba(240,160,32,.3);
+    padding:1px 7px;border-radius:6px;font-size:.74rem;font-weight:700;}
+
   /* 净值统计 */
   .nav-params{display:flex;flex-wrap:nowrap;gap:12px;align-items:flex-end;}
   .nav-params label{display:flex;flex-direction:column;font-size:.76rem;color:var(--sub);gap:4px;width:125px;flex-shrink:0;}
@@ -314,6 +326,18 @@
     </div>
   </div>
 
+  <!-- 乖离率减仓预警（拥挤度管理） -->
+  <div class="card">
+    <div class="card-head">
+      <h2>⚠️ 乖离率减仓预警（拥挤度管理）</h2>
+      <span class="tag" id="warnDate">--</span>
+    </div>
+    <div class="card-body">
+      <p class="note">基于张翼轸 BIAS 拥挤度管理思路（<a href="https://mp.weixin.qq.com/s/qpnlpfEOiI-Vi3eGx8Pmvg" target="_blank" rel="noopener" style="color:var(--blue)">原文</a>）：<b>BIAS20&gt;10%</b> 减一半、<b>&gt;15%</b> 再减一半、<b>BIAS60&gt;20%</b> 再减一半。属左侧减仓信号，非逃顶；动量付右侧回撤代价，BIAS 付左侧卖飞代价。</p>
+      <table class="table" id="warnTable"><!-- renderWarn() 填充 --></table>
+    </div>
+  </div>
+
   <!-- 净值统计 -->
   <div class="card">
     <div class="card-head">
@@ -372,7 +396,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/15 18:25:31（本地构建）";
+const BUILD_TIME = "2026/8/17 23:26:54（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -553,12 +577,14 @@ function snapSrcLabel(){
 /* 纯函数：由后复权收盘价序列计算双因子，供实时计算与净值模拟复用 */
 function calcFactors(closes){
   const n = closes.length;
-  if(n < 21) return {valid:false};              // 至少需 21 个交易日才能算 BIAS20(MA20)
+  if(n < 61) return {valid:false};              // 至少需 61 个交易日（MA60 需 ≥60 根后复权收盘价）
   const recent = closes.slice(-70);
   const nR = recent.length;
   const last = recent[nR-1];
   const ma20 = recent.slice(-20).reduce((a,b)=>a+b,0)/Math.min(20,nR);
   const bias20 = (last/ma20 - 1)*100;
+  const ma60 = recent.slice(-60).reduce((a,b)=>a+b,0)/Math.min(60,nR);
+  const bias60 = (last/ma60 - 1)*100;
   // 250日涨幅：AShareHub 主源历史充足为真实满250日；退化时按实际可用天数 min(250,n-1) 计算
   const chgDays = Math.min(250, n-1);
   const chg250 = (closes[n-1] / closes[n-1-chgDays] - 1) * 100;
@@ -570,7 +596,7 @@ function calcFactors(closes){
   // 果仁 stdev 为样本标准差（÷N−1）
   const variance = volRet.reduce((a,b)=>a+(b-mean)*(b-mean),0)/(volRet.length-1);
   const vol60 = Math.sqrt(variance) * Math.sqrt(60) * 100;
-  return {valid:true, ma20, bias20, chg250, chgDays, vol60};
+  return {valid:true, ma20, bias20, ma60, bias60, chg250, chgDays, vol60};
 }
 
 /* ===== 由后复权日线计算双因子（果仁口径），并缓存完整序列供净值模拟 ===== */
@@ -592,6 +618,8 @@ function computeFromKlines(e, klines){
   e.price = e.adjClose;                   // 初始后复权价；fetchAll 成功后会被 fqt=0 实际价覆盖(display)
   e.ma20 = f.ma20;
   e.bias20 = f.bias20;
+  e.ma60 = f.ma60;
+  e.bias60 = f.bias60;
   e.chg250 = f.chg250;
   e.chgDays = f.chgDays;
   e.vol60 = f.vol60;
@@ -747,6 +775,49 @@ function render(){
   const ts = now.toLocaleString('zh-CN',{hour12:false});
   document.getElementById('updateTime').textContent = ts;
   document.getElementById('dataTime').textContent = ts;
+  renderWarn();
+}
+
+/* ===== 乖离率减仓预警（拥挤度管理，张翼轸 BIAS 思路） ===== */
+const BIAS_T1=10, BIAS_T2=15, BIAS_T3=20;   // 文章原值，固定：BIAS20>10%减一半、>15%再减一半、BIAS60>20%再减一半
+function warnSignal(e){
+  const b20=e.bias20, b60=e.bias60;
+  const tags=[];
+  if(b20>BIAS_T1) tags.push('10%');
+  if(b20>BIAS_T2) tags.push('15%');
+  if(b60>BIAS_T3) tags.push('60·20%');
+  return { triggered: tags.length>0, tags, b20, b60 };
+}
+function renderWarn(){
+  const $t=document.getElementById('warnTable'); if(!$t) return;
+  const rows = etfData.filter(e=>e.valid).map(e=>{
+    const w = warnSignal(e);
+    const b20cls = e.bias20>=BIAS_T2 ? 'bias-w2' : (e.bias20>=BIAS_T1 ? 'bias-w1' : (e.bias20>=0?'factor':'factor neg'));
+    const b20sign = e.bias20>=0?'+':'';
+    const b60cls = (e.bias60!==undefined && e.bias60>=BIAS_T3) ? 'bias-w3' : (e.bias60!==undefined && e.bias60>=0?'factor':'factor neg');
+    const b60sign = (e.bias60!==undefined && e.bias60>=0)?'+':'';
+    const b60txt = (e.bias60!==undefined) ? (b60sign+e.bias60.toFixed(2)+'%') : '—';
+    const sig = w.triggered
+      ? `<span class="badge b-warn">减仓预警</span><span class="warn-tags">${w.tags.map(t=>`<span>${t}</span>`).join('')}</span>`
+      : `<span class="badge b-ok">正常</span>`;
+    return `<tr>
+      <td style="text-align:left">${e.name}</td>
+      <td class="${b20cls}">${b20sign}${e.bias20.toFixed(2)}%</td>
+      <td class="${b60cls}">${b60txt}</td>
+      <td style="text-align:left">${sig}</td>
+    </tr>`;
+  }).join('');
+  $t.innerHTML = `<thead><tr>
+      <th style="text-align:left">标的</th>
+      <th>BIAS20</th>
+      <th>BIAS60</th>
+      <th style="text-align:left">减仓信号</th>
+    </tr></thead><tbody>${rows}</tbody>`;
+  // 面板日期：取已加载 ETF 中最新交易日（实时/快照同源 fullDates 均为 YYYYMMDD），否则回退快照日期
+  let ld='';
+  etfData.forEach(e=>{ if(e.fullDates && e.fullDates.length){ const d=e.fullDates[e.fullDates.length-1]; if(d>ld) ld=d; } });
+  const $d=document.getElementById('warnDate');
+  if($d) $d.textContent = ld ? ('截至 '+dashDate(ld)) : (SNAP_DATE ? ('截至 '+SNAP_DATE) : '--');
 }
 
 function setStatus(type, text){
