@@ -155,16 +155,20 @@
   @keyframes slide{from{opacity:0;transform:translate(-50%,-16px);}to{opacity:1;transform:translate(-50%,0);}}
 
   /* 乖离率减仓预警（拥挤度管理） */
-  .note{font-size:.86rem;color:var(--sub);line-height:1.6;margin-bottom:10px;}
+  .note{font-size:.84rem;color:var(--sub);line-height:1.45;margin-bottom:6px;}
   .note a{text-decoration:none;}
   .bias-w1{color:var(--gold);font-weight:700;}
   .bias-w2{color:var(--attack);font-weight:700;}
   .bias-w3{color:var(--up);font-weight:700;}
   .badge.b-warn{background:rgba(255,77,79,.15);color:var(--up);border:1px solid rgba(255,77,79,.35);}
   .badge.b-ok{background:rgba(30,199,125,.14);color:var(--down);border:1px solid rgba(30,199,125,.3);}
-  .warn-tags{display:inline-flex;gap:6px;margin-left:8px;}
+  .warn-tags{display:inline-flex;gap:5px;margin-left:8px;}
   .warn-tags span{background:rgba(240,160,32,.14);color:var(--gold);border:1px solid rgba(240,160,32,.3);
-    padding:1px 7px;border-radius:6px;font-size:.74rem;font-weight:700;}
+    padding:1px 6px;border-radius:6px;font-size:.74rem;font-weight:700;}
+  #warnTable{margin-top:4px;}
+  #warnTable thead th{padding:7px 10px;}
+  #warnTable tbody td{padding:7px 10px;}
+  .warn-card .card-body{padding:13px 18px;}
 
   /* 净值统计 */
   .nav-params{display:flex;flex-wrap:nowrap;gap:12px;align-items:flex-end;}
@@ -327,13 +331,13 @@
   </div>
 
   <!-- 乖离率减仓预警（拥挤度管理） -->
-  <div class="card">
+  <div class="card warn-card">
     <div class="card-head">
-      <h2>⚠️ 乖离率减仓预警（拥挤度管理）</h2>
+      <h2>⚠️ 乖离率减仓预警</h2>
       <span class="tag" id="warnDate">--</span>
     </div>
     <div class="card-body">
-      <p class="note">基于张翼轸 BIAS 拥挤度管理思路（<a href="https://mp.weixin.qq.com/s/qpnlpfEOiI-Vi3eGx8Pmvg" target="_blank" rel="noopener" style="color:var(--blue)">原文</a>）：<b>BIAS20&gt;10%</b> 减一半、<b>&gt;15%</b> 再减一半、<b>BIAS60&gt;20%</b> 再减一半。属左侧减仓信号，非逃顶；动量付右侧回撤代价，BIAS 付左侧卖飞代价。</p>
+      <p class="note">基于张翼轸 BIAS 思路（<a href="https://mp.weixin.qq.com/s/qpnlpfEOiI-Vi3eGx8Pmvg" target="_blank" rel="noopener" style="color:var(--blue)">原文</a>）：左侧减仓预警，非逃顶 — <b>BIAS20&gt;10%</b> 减½、<b>&gt;15%</b> 再减½、<b>BIAS60&gt;20%</b> 再减½。</p>
       <table class="table" id="warnTable"><!-- renderWarn() 填充 --></table>
     </div>
   </div>
@@ -396,7 +400,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/17 23:26:54（本地构建）";
+const BUILD_TIME = "2026/8/17 23:38:51（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
