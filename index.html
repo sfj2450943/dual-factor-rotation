@@ -168,18 +168,11 @@
   .warn-tags{display:inline-flex;gap:5px;margin-left:8px;}
   .warn-tags span{background:rgba(240,160,32,.14);color:var(--gold);border:1px solid rgba(240,160,32,.3);
     padding:1px 6px;border-radius:6px;font-size:.74rem;font-weight:700;}
-  #warnTable{margin-top:4px;width:100%;}
-  #warnTable thead th{padding:7px 10px;}
-  #warnTable tbody td{padding:7px 10px;}
+  #warnTable{margin-top:4px;width:auto;min-width:min(100%,520px);margin-left:auto;margin-right:auto;border-collapse:collapse;}
+  #warnTable thead th,#warnTable tbody td{padding:7px 10px;white-space:nowrap;}
+  #warnTable thead th:nth-child(1),#warnTable td:nth-child(1){width:auto;text-align:left;}
   #warnTable thead th:nth-child(2),#warnTable thead th:nth-child(3),#warnTable thead th:nth-child(4),
-  #warnTable tbody td:nth-child(2),#warnTable tbody td:nth-child(3),#warnTable tbody td:nth-child(4){text-align:right;}
-  @media(min-width:768px){
-    #warnTable{table-layout:fixed;}
-    #warnTable th:nth-child(1),#warnTable td:nth-child(1){width:38%;}
-    #warnTable th:nth-child(2),#warnTable td:nth-child(2){width:20%;}
-    #warnTable th:nth-child(3),#warnTable td:nth-child(3){width:20%;}
-    #warnTable th:nth-child(4),#warnTable td:nth-child(4){width:22%;}
-  }
+  #warnTable tbody td:nth-child(2),#warnTable tbody td:nth-child(3),#warnTable tbody td:nth-child(4){width:1%;text-align:right;}
   .warn-card .card-body{padding:13px 18px;}
 
   /* 净值统计 */
@@ -412,7 +405,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/18 22:51:56（本地构建）";
+const BUILD_TIME = "2026/8/18 22:55:33（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
