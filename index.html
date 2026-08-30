@@ -405,7 +405,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/20 23:19:29（本地构建）";
+const BUILD_TIME = "2026/8/30 11:40:02（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -455,6 +455,18 @@ const EXAMPLE = {
 
 const N = etfData.length;
 const etfByCode = {}; etfData.forEach(e=>etfByCode[e.code]=e);   // code -> 对象 映射（模拟引擎用）
+
+/* 基准 secid 映射（用于实时升级基准 klines，保持与 gen_snapshot.py 一致） */
+const BENCH_SECID = {
+  a500: '1.000510',   // 中证A500
+  cyb:  '0.399606',   // 创业板指（页面显示"创业板指"，快照用 399606）
+  hs300:'1.000300',   // 沪深300
+  sp500:'1.513500',   // 标普500ETF(基准)
+  ndx:  '1.513100',   // 纳斯达克100ETF(基准)
+};
+const BENCH_LABEL = {
+  a500:'中证A500', cyb:'创业板指', hs300:'沪深300', sp500:'标普500ETF', ndx:'纳斯达克100ETF'
+};
 
 /* ===== 数据获取：东方财富后复权日线（fetch 主 + JSONP 兜底）===== */
 const EM_BASE = 'https://push2his.eastmoney.com/api/qt/stock/kline/get';
@@ -546,6 +558,25 @@ function jsonpKline(url){
     s.src = url + (url.indexOf('?')>=0?'&':'?') + 'cb=' + cb;
     document.body.appendChild(s);
   });
+}
+
+/* K线合并：用新拉到的实时 klines 增量/覆盖快照基准序列，key=normalizeDate(日期)，保留最近320条 */
+function mergeKlines(oldArr, newArr){
+  const map = new Map();
+  for(const k of oldArr || []){
+    const p = k.split(',');
+    const d = normalizeDate(p[0]);
+    if(d) map.set(d, k);
+  }
+  for(const k of newArr || []){
+    const p = k.split(',');
+    const d = normalizeDate(p[0]);
+    if(d) map.set(d, k);
+  }
+  return Array.from(map.entries())
+    .sort((a,b)=>a[0].localeCompare(b[0]))
+    .map(e=>e[1])
+    .slice(-320);
 }
 
 /* ===== 真实快照兜底（同源 data.json，绕过所有网络封锁）=====
@@ -679,7 +710,23 @@ async function backgroundLiveUpgrade(){
     if(price==null){ try{ const k0t = await withTimeout(jsonpTencent(e.secid, 0), 13000, e.code+'_tx0'); if(k0t){ const c=k0t.map(x=>parseFloat(x.split(',')[2])); price=c[c.length-1]; } }catch(_){} }
     if(price!=null) e.price = price;
   }));
+  // 基准也走实时升级：让净值统计的基准蓝线和策略曲线同步到最新收盘日
+  await upgradeBenchmarks();
   compute(); render(); renderNav();             // 用实时覆盖后的结果重渲染
+}
+
+async function upgradeBenchmarks(){
+  if(!SNAP_BENCHMARKS) SNAP_BENCHMARKS = {};
+  await Promise.all(Object.keys(BENCH_SECID).map(async bid=>{
+    const secid = BENCH_SECID[bid];
+    let kl = null;
+    try{ kl = await withTimeout(fetchKline(secid, 2), 9000, bid); }catch(_){}
+    if(!kl){ try{ kl = await withTimeout(jsonpTencent(secid, 2), 13000, bid+'_tx'); }catch(_){} }
+    if(!kl) return;
+    const old = SNAP_BENCHMARKS[bid] && SNAP_BENCHMARKS[bid].klines || [];
+    const merged = mergeKlines(old, kl);
+    SNAP_BENCHMARKS[bid] = {label: BENCH_LABEL[bid] || (SNAP_BENCHMARKS[bid] && SNAP_BENCHMARKS[bid].label) || bid, klines: merged};
+  }));
 }
 function withTimeout(p, ms, tag){
   return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+tag)), ms))]);
