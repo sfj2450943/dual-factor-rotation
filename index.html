@@ -405,7 +405,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/8/30 11:40:02（本地构建）";
+const BUILD_TIME = "2026/09/20 22:36:06（本地构建）";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -649,8 +649,9 @@ function computeFromKlines(e, klines){
                       .filter(x=>!isNaN(x.c) && x.d);
   const dates = pairs.map(x=>x.d);
   const closes = pairs.map(x=>x.c);
-  e.fullDates = dates;          // 完整日期序列（YYYY-MM-DD，升序）
+  e.fullDates = dates;          // 完整日期序列（YYYYMMDD，升序）
   e.fullCloses = closes;        // 完整后复权收盘价序列（与 dates 对齐）
+  e.klineCnt = dates.length;    // 供前端区分「数据不足」与「获取失败」两种无效原因
   const f = calcFactors(closes);
   if(!f.valid){ e.valid=false; return; }
   e.valid = true;
@@ -728,8 +729,12 @@ async function upgradeBenchmarks(){
     SNAP_BENCHMARKS[bid] = {label: BENCH_LABEL[bid] || (SNAP_BENCHMARKS[bid] && SNAP_BENCHMARKS[bid].label) || bid, klines: merged};
   }));
 }
+/* 超时包装：底层请求完成/超时后都要清掉定时器，否则反复点「立即刷新」会不断累积挂起的 Timer
+   与未取消的网络请求（原实现用 Promise.race 但从不 clearTimeout）。 */
 function withTimeout(p, ms, tag){
-  return Promise.race([p, new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout '+tag)), ms))]);
+  let timer=null;
+  const timeout=new Promise((_,rej)=>{ timer=setTimeout(()=>rej(new Error('timeout '+tag)), ms); });
+  return Promise.race([Promise.resolve(p).finally(()=>clearTimeout(timer)), timeout]);
 }
 
 /* ===== 排名打分（沿用原逻辑）===== */
@@ -766,7 +771,11 @@ function actBadge(d){
 
 function rowHTML(e){
   if(e.valid===false){
-    return `<tr><td colspan="11" style="text-align:center;color:var(--up);">${e.name}（${e.code}）行情获取失败，已使用示例值</td></tr>`;
+    // 区分两种无效原因：历史根数不足（数据已拿到但不能算）vs 完全取不到数据
+    const msg = (e.klineCnt && e.klineCnt>0)
+      ? `历史数据不足（仅 ${e.klineCnt} 根 &lt; 61），暂无法计算双因子`
+      : '行情获取失败（快照与实时均不可用）';
+    return `<tr><td colspan="11" style="text-align:center;color:var(--up);">${e.name}（${e.code}）${msg}</td></tr>`;
   }
   const biasCls = e.bias20>=0?'factor':'factor neg';
   const sign = e.bias20>=0?'+':'';
@@ -803,6 +812,9 @@ function render(){
   let r=0;
   list.forEach(e=>{ e.rank = e.score>0 ? (++r) : 0; });        // 仅达标者编号名次，不达标显示 —
   const top5 = list.filter(e=>e.score>0).slice(0,5);           // 目标买入池 = 达标者中前5
+  // 关键：必须先全部重置再标记，否则曾进过前5的标的会永久保留 inTop5=true，
+  // 刷新后排名变动时状态列/决策明细会显示错误的「持仓中/目标买入」。
+  etfData.forEach(e=>{ e.inTop5=false; });
   top5.forEach(e=>e.inTop5=true);
 
   document.getElementById('poolBody').innerHTML = list.map(rowHTML).join('');
@@ -817,7 +829,7 @@ function render(){
   document.getElementById('decHold').textContent = held.length ? ('持有 '+held.length+' 只') : '空仓';
   document.getElementById('decHold').style.color = 'var(--text)';
   document.getElementById('decHoldDet').innerHTML = held.length
-    ? held.map(e=> e.name+'（第'+e.rank+'名'+(e.inTop5?' · 持仓中' : ' · 应卖出')+'）').join('<br>')
+    ? held.map(e=> e.name+'（'+(e.rank>0?('第'+e.rank+'名'):'不达标')+(e.inTop5?' · 持仓中' : ' · 应卖出')+'）').join('<br>')
     : '当前无持仓';
   document.getElementById('decAct').textContent = badge.t;
   document.getElementById('decAct').style.color = d.action==='HOLD' ? 'var(--gold)' : 'var(--blue)';
@@ -891,15 +903,24 @@ async function loadAndRender(){
   const liveCnt = etfData.filter(e=>e.live).length;
   const snapCnt = etfData.filter(e=>e.snap).length;
   const validCnt = etfData.filter(e=>e.valid).length;
-  if(validCnt===0) setStatus('error','行情快照与实时均不可用，请检查网络后手动刷新');
-  else if(liveCnt === N) setStatus('ok', `数据已更新 · 来源东方财富/腾讯实时（后复权）`);
-  else if(snapCnt > 0) setStatus('warn', `实时通道被网络拦截 · 已加载 ${snapSrcLabel()} 行情快照 ${snapCnt}/${N} 只（截至 ${SNAP_DATE}）`);
-  else setStatus('warn', `已获取 ${liveCnt}/${N} 只实时行情，其余 ${N-liveCnt} 只使用示例值`);
+  if(validCnt===0){ setStatus('error','行情快照与实时均不可用，请检查网络后手动刷新'); return 'error'; }
+  if(liveCnt === N){ setStatus('ok', `数据已更新 · 来源东方财富/腾讯实时（后复权）`); return 'ok'; }
+  if(snapCnt > 0){ setStatus('warn', `实时通道被网络拦截 · 已加载 ${snapSrcLabel()} 行情快照 ${snapCnt}/${N} 只（截至 ${SNAP_DATE}）`); return 'warn'; }
+  setStatus('warn', `已获取 ${liveCnt}/${N} 只实时行情，其余 ${N-liveCnt} 只使用示例值`);
+  return 'warn';
 }
-function manualRefresh(){
+async function manualRefresh(){
   const btn=document.getElementById('refreshBtn');
   btn.disabled=true; btn.classList.add('spin');
-  loadAndRender().finally(()=>{ btn.disabled=false; btn.classList.remove('spin'); showToast('已手动刷新行情'); });
+  try{
+    const st=await loadAndRender();
+    // 按真实结果提示（原实现无论成功失败都提示"已手动刷新行情"，全部失败时具有误导性）
+    showToast(st==='error' ? '刷新失败：行情通道均不可用' : (st==='ok' ? '已刷新：实时行情' : '已刷新：快照行情（实时通道被拦截）'));
+  }catch(e){
+    showToast('刷新异常：'+(e&&e.message?e.message:'未知错误'));
+  }finally{
+    btn.disabled=false; btn.classList.remove('spin');
+  }
 }
 function showToast(msg){
   const t=document.getElementById('toast');
@@ -909,6 +930,9 @@ function showToast(msg){
 
 /* ===================== 净值统计（模拟 / 基准 / 图表 / 记录） ===================== */
 const NAV_KEY='dualFactorNavParams', NAV_MANUAL_KEY='dualFactorNavManual';
+/* 净值图坐标系常量：drawNavChart 与 showNavTip 必须共用同一组值，
+   否则悬停 tooltip 的日期/收益率会与鼠标所指的数据点错位（左右两端偏差最大）。 */
+const NAV_W=680, NAV_H=300, NAV_PADL=48, NAV_PADR=30, NAV_PADT=18, NAV_PADB=30;
 
 /* 日期规范化：统一为 YYYYMMDD（去掉所有非数字），无法解析返回 ''。
    页面内部日历/快照日期均为 YYYYMMDD；起始日输入框是 type=date（YYYY-MM-DD），
@@ -946,16 +970,18 @@ function loadNavParams(){
       // 规范化起始日，避免带横杠的旧值污染后续字符串比较
       p.start = (s.start==='__AUTO__'||!s.start) ? '__AUTO__' : (normalizeDate(s.start)||'__AUTO__');
       p.userStartSet = !!s.userStartSet;
-      if(typeof s.capital==='number') p.capital=s.capital;
-      if(typeof s.rebal==='number') p.rebal=s.rebal;
-      if(typeof s.comm==='number') p.comm=s.comm;
+      // 护栏：持久化值可能被非法输入污染（如 rebal<1 会死循环、capital<0 会让净值失真、comm<0 会「凭空生钱」）
+      if(typeof s.capital==='number' && isFinite(s.capital) && s.capital>0) p.capital=s.capital;
+      if(typeof s.rebal==='number' && isFinite(s.rebal) && s.rebal>=1) p.rebal=Math.floor(s.rebal);
+      if(typeof s.comm==='number' && isFinite(s.comm) && s.comm>=0) p.comm=s.comm;
       if(s.bench) p.bench=s.bench;
       if(s.mode) p.mode=s.mode;
     }
   }catch(e){}
   return p;
 }
-/* 快照最新共同交易日（所有ETF都有的最晚日期） */
+/* 各 ETF 最新交易日的最大值（注意：是 max 而非交集"共同交易日"；
+   快照生成时 12 只日期一致，实时升级后个别标的可能领先或停牌而落后） */
 function latestTradeDate(){
   const ds=etfData.map(e=>e.fullDates&&e.fullDates.length?e.fullDates[e.fullDates.length-1]:null).filter(Boolean);
   if(!ds.length) return null;
@@ -994,24 +1020,28 @@ function top5AtDate(d){
   qual.sort((a,b)=>b.score-a.score);
   return qual.slice(0,5);
 }
-/* 自动模式调仓日：起始日起每 rebal 个交易日一次 */
+/* 自动模式调仓日：起始日起每 rebal 个交易日一次
+   护栏：step 必须为正整数——若 p.rebal 为 0/负数，for 的 i 会递减导致条件恒真而死循环、页面冻结 */
 function autoRebalDays(p){
   const cal=buildCalendar().filter(d=>d>=p.start); const days=[];
-  for(let i=0;i<cal.length;i+=p.rebal) days.push(cal[i]);
+  const step=Math.max(1, Math.floor(Number(p.rebal)||1));
+  for(let i=0;i<cal.length;i+=step) days.push(cal[i]);
   return days;
 }
 /* 净值模拟引擎：在 rebalDays 指定的调仓日全清仓、等权买前5，扣佣金，逐日 mark-to-market
    返回 {nav,rebalances,finalTotal,retPct,capital,fallback,actualStart,error} */
 function simulateNav(p, rebalDays){
   const allCal=buildCalendar();
-  const maxD = allCal.length? allCal[allCal.length-1] : null;
-  let actualStart=p.start, fallback=false;
-  if(maxD && p.start > maxD){
-    // 起始日暂无行情：回退到最新交易日演示；若回退后仍不足2天（无法形成曲线），给出友好提示
-    if(allCal.length < 2) return {error:'暂无足够行情数据，请先点「立即刷新」'};
+  if(!allCal.length) return {error:'暂无行情数据，请先点「立即刷新」'};
+  const maxD = allCal[allCal.length-1];
+  let actualStart=p.start, fallback=false, startClamped=false;
+  if(p.start > maxD){
+    // 起始日晚于最新行情：回退到最新交易日演示（原实现此处的二次校验恒为真，
+    // 使 fallback 分支永不可达、只抛错误，属死代码，已修正为按设计意图回退演示）
     actualStart=maxD; fallback=true;
-    if(allCal.filter(d=>d>=actualStart).length < 2)
-      return {error:'起始日 '+p.start+' 暂无行情；请在该日盘后刷新行情（或重新生成快照 data.json）后再查看净值曲线'};
+  }else if(p.start < allCal[0]){
+    // 起始日早于可用行情起点：从最早可用日起算，并提示用户（避免 summary 区间起点与实际曲线不符）
+    actualStart=allCal[0]; startClamped=true;
   }
   const cal=allCal.filter(d=>d>=actualStart);
   if(cal.length===0) return {error:'无可用交易日（起始日 '+p.start+' 可能晚于最新行情）'};
@@ -1044,15 +1074,21 @@ function simulateNav(p, rebalDays){
         const per=cash/top5.length;
         for(const t of top5){
           const px=t.priceAtD; if(px==null) continue;
-          const invest=per*(1-p.comm), sh=invest/px;
-          cash-=sh*px; holdings[t.code]=sh;
-          buys.push({code:t.code,name:t.name,price:px,shares:sh,amount:sh*px,comm:sh*px*p.comm});
-          commission+=sh*px*p.comm;
+          const invest=per*(1-p.comm), sh=invest/px, comm=sh*px*p.comm;
+          // 关键：佣金也必须从现金扣除。原实现只扣本金（cash-=sh*px），佣金仅计入 commission 而未出账，
+          // 导致每期总资产凭空多出佣金金额并逐期复利，净值被系统性高估。
+          cash-=sh*px+comm;
+          holdings[t.code]=sh;
+          buys.push({code:t.code,name:t.name,price:px,shares:sh,amount:sh*px,comm});
+          commission+=comm;
         }
       }
-      rebalances.push({date:d,type:'auto',sells,buys,commission});
+      // 调仓后市值 = 买入成本合计 + 剩余现金（此前表格直接复用「买入总额」，列名与内容不符）
+      const buyCost = buys.reduce((s,b)=>s+b.amount,0);
+      rebalances.push({date:d,type:'auto',sells,buys,commission,
+                       totalAfter: buyCost + cash, cashAfter: cash});
       lastRebalIdx = rebalances.length-1;
-      lastBuyTotal = buys.reduce((s,b)=>s+b.amount,0);
+      lastBuyTotal = buyCost;
     }
     let total=cash;
     for(const code in holdings){
@@ -1071,7 +1107,8 @@ function simulateNav(p, rebalDays){
     rebalances[lastRebalIdx].periodReturn = (holdingsValue/lastBuyTotal-1)*100;
   }
   const finalTotal=nav.length?nav[nav.length-1].total:p.capital;
-  return {nav,rebalances,finalTotal,retPct:(finalTotal/p.capital-1)*100,capital:p.capital,fallback,actualStart};
+  return {nav,rebalances,finalTotal,retPct:(finalTotal/p.capital-1)*100,capital:p.capital,fallback,startClamped,actualStart,
+          dataStart: allCal[0], dataEnd: maxD};
 }
 
 /* 基准曲线：从同源快照 benchmarks 取，归一化到 startDate 起=1.0
@@ -1091,13 +1128,14 @@ function benchmarkSeries(bid, startDate){
   if(idx<0) return null;
   const sub=closes.slice(idx), subd=dates.slice(idx);
   const base=sub[0];
-  return {label:b.label, norm: sub.map((c,i)=>({date:subd[i], norm:c/base}))};
+  // last：基准序列自身的最新日期，供 summary 判断基准是否落后于策略（实时升级失败时可见）
+  return {label:b.label, norm: sub.map((c,i)=>({date:subd[i], norm:c/base})), last: subd[subd.length-1]};
 }
 
 /* 手写 SVG 净值曲线：策略线(金) + 基准线(蓝虚线, 仅归一化模式) */
 function drawNavChart(sim, bench, mode){
   if(!sim || !sim.nav || !sim.nav.length) return '<div style="color:var(--sub);padding:20px;text-align:center;">暂无数据</div>';
-  const W=680, H=300, padL=48, padR=30, padT=18, padB=30;
+  const W=NAV_W, H=NAV_H, padL=NAV_PADL, padR=NAV_PADR, padT=NAV_PADT, padB=NAV_PADB;
   const nav=sim.nav;
   const n=nav.length;
   let strat, benchPts=null;
@@ -1108,7 +1146,23 @@ function drawNavChart(sim, bench, mode){
   }else{
     strat=nav.map(n=>({date:n.date, v:n.total}));
   }
-  const allVals = strat.map(s=>s.v).concat(benchPts?benchPts.map(b=>b.norm):[]);
+  /* 基准按「日期」对齐到策略日历（原实现按下标 i 直接匹配两组序列，
+     当基准与策略的日期集合不同时整条蓝线会错位一格、tooltip 也会张冠李戴）。
+     对齐规则：对策略的第 i 天，取基准中日期 <= 该天的最近一条（前向填充）。 */
+  let benchAligned=null, benchStart=-1, benchEnd=-1;
+  if(benchPts && benchPts.length){
+    benchAligned=new Array(strat.length).fill(null);
+    let j=0;
+    for(let i=0;i<strat.length;i++){
+      const d=strat[i].date;
+      while(j<benchPts.length && benchPts[j].date<=d) j++;
+      if(j-1>=0) benchAligned[i]=benchPts[j-1].norm;
+    }
+    benchStart=benchAligned.findIndex(v=>v!=null);
+    for(let i=benchAligned.length-1;i>=0;i--){ if(benchAligned[i]!=null){ benchEnd=i; break; } }
+    if(benchStart<0) benchAligned=null;   // 整段无重叠：不画基准线
+  }
+  const allVals = strat.map(s=>s.v).concat(benchAligned?benchAligned.filter(v=>v!=null):[]);
   let min=Math.min(...allVals), max=Math.max(...allVals);
   if(min===max){ min-=0.01; max+=0.01; }
   const baseRef = mode==='norm'?1:nav[0].total;
@@ -1166,19 +1220,21 @@ function drawNavChart(sim, bench, mode){
   });
 
   const stratPts = strat.map((s,i)=>`${x(i).toFixed(1)},${y(s.v).toFixed(1)}`).join(' ');
+  // 基准线：只在有按日期对齐数据的区间绘制（不再按下标截断，避免蓝线凭空短一截/错位）
   let benchLine='';
-  if(benchPts && mode==='norm'){
-    const bn=Math.min(strat.length, benchPts.length);
-    benchLine = `<polyline points="${Array.from({length:bn},(_,i)=>`${x(i).toFixed(1)},${y(benchPts[i].norm).toFixed(1)}`).join(' ')}" fill="none" stroke="#4d8bff" stroke-width="1.6" stroke-dasharray="4 3"/>`;
+  if(benchAligned && mode==='norm' && benchEnd>=benchStart){
+    const pts=[];
+    for(let i=benchStart;i<=benchEnd;i++) pts.push(`${x(i).toFixed(1)},${y(benchAligned[i]).toFixed(1)}`);
+    benchLine = `<polyline points="${pts.join(' ')}" fill="none" stroke="#4d8bff" stroke-width="1.6" stroke-dasharray="4 3"/>`;
   }
   const last=strat[strat.length-1];
   const lastCol = last.v>=baseRef ? '#ff4d4f' : '#1ec77d';   // 涨红 跌绿（A股惯例）
 
-  // 鼠标悬停数据
+  // 鼠标悬停数据（基准用同一套按日期对齐的结果）
   const tipData = strat.map((s,i)=>({
     date:s.date,
     strat:{v:s.v, pct:(mode==='norm'?(s.v-baseRef)/baseRef*100:(s.v/baseRef-1)*100)},
-    bench: benchPts && i<benchPts.length ? {v:benchPts[i].norm, pct:(benchPts[i].norm-1)*100} : null
+    bench: (benchAligned && benchAligned[i]!=null) ? {v:benchAligned[i], pct:(benchAligned[i]-1)*100} : null
   }));
   const tipJson = JSON.stringify(tipData).replace(/"/g,'&quot;');
 
@@ -1203,11 +1259,11 @@ function showNavTip(evt, svg){
   if(!tip) return;
   const raw=svg.getAttribute('data-tip');
   if(!raw) return;
-  const data=JSON.parse(raw.replace(/&quot;/g,'"'));
-  const mode=svg.getAttribute('data-mode');
+  let data; try{ data=JSON.parse(raw.replace(/&quot;/g,'"')); }catch(e){ return; }
   const benchLabel=svg.getAttribute('data-bench-label')||'基准';
   const rect=svg.getBoundingClientRect();
-  const W=680, padL=58, padR=18;
+  // 必须与 drawNavChart 的坐标系一致（原为 58/18，与绘图的 48/30 不符，导致悬停日期错位）
+  const W=NAV_W, padL=NAV_PADL, padR=NAV_PADR;
   const mx=evt.clientX-rect.left;
   const plotLeft=rect.width*padL/W;
   const plotRight=rect.width*(W-padR)/W;
@@ -1251,7 +1307,8 @@ function renderRebalanceTable(rebalances){
   const rows = real.map((r,i)=>{
     const buyCodes = r.buys.map(b=>b.name).join('、')||'—';
     const buyAmt = r.buys.reduce((s,b)=>s+b.amount,0);
-    const totalAfter = buyAmt + (r.buys.length? -0 : 0);
+    // 调仓后市值 = 买入成本 + 剩余现金（旧值直接等于 buyAmt，列名与实际内容不符）
+    const totalAfter = (r.totalAfter!=null) ? r.totalAfter : buyAmt;
     const pr = r.periodReturn;
     const prText = (pr==null || isNaN(pr)) ? '—' : (pr>=0?'+':'')+pr.toFixed(2)+'%';
     const prCol = (pr==null || isNaN(pr)) ? 'var(--sub)' : (pr>=0?'#ff4d4f':'#1ec77d');
@@ -1292,18 +1349,28 @@ function exportNavCSV(sim, p){
     if(!r.sells.length && !r.buys.length) csv += `${r.date},${r.type==='manual'?'手动':'自动'},无,--,--,--,--,--\n`;
   });
   const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='净值记录_'+p.start+'.csv'; a.click();
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download='净值记录_'+p.start+'.csv';
+  a.style.display='none'; document.body.appendChild(a); a.click();
+  setTimeout(()=>{ document.body.removeChild(a); URL.revokeObjectURL(url); }, 1500);   // 回收，避免反复导出累积内存
   showToast('已导出 CSV');
 }
 
 /* 手动真实持仓登记：用户盘后实际调仓后登记日期，页面据当时前5自动生成真实曲线(叠加对比) */
 function navRegisterRebal(){
   const cal=buildCalendar();
-  const lastDay = cal.length? cal[cal.length-1] : new Date().toISOString().slice(0,10);
+  if(!cal.length){ showToast('暂无行情数据，请先点「立即刷新」'); return; }
+  // 优先登记「今天」（需为行情日历内的交易日），否则回退到日历最后一个交易日。
+  // 原实现直接用日历最后一天：快照若停留在过去（如 8/28 而今天是 9/20），会把登记日静默写成 8/28。
+  // 另：原兜底用 toISOString()（UTC），在东八区 08:00 前会返回前一天，一并去掉。
+  const now=new Date();
+  const today=now.getFullYear()+String(now.getMonth()+1).padStart(2,'0')+String(now.getDate()).padStart(2,'0');
+  const isToday = cal.includes(today);
+  const day = isToday ? today : cal[cal.length-1];
   const recs=loadManualRecords();
-  if(recs.includes(lastDay)){ showToast('该调仓日('+lastDay+')已登记'); return; }
-  recs.push(lastDay); saveManualRecords(recs);
-  showToast('已登记调仓日 '+lastDay+'（按当时前5严格策略生成）');
+  if(recs.includes(day)){ showToast('该调仓日('+dashDate(day)+')已登记'); return; }
+  recs.push(day); saveManualRecords(recs);
+  showToast('已登记调仓日 '+dashDate(day)+(isToday?'（今日）':'（非交易日，取最近交易日）')+'，按当时前5严格策略生成');
   renderNav();
 }
 function navClearManual(){
@@ -1321,14 +1388,21 @@ async function renderNav(){
     p.start = recs.length ? recs.slice().sort()[0] : (lt || '__AUTO__');
   } else {
     // 自动模式：默认从策略锚点(2026-08-11)起算，覆盖完整历史调仓；
-    // 只有用户在本会话真正改过起始日输入框，才尊重其设置；否则旧的 localStorage 起始日会截断历史曲线
-    if(p.start==='__AUTO__' || !p.start || !window.__navStartExplicit){
+    // 只有用户明确设置过起始日（userStartSet 已持久化，跨刷新保留）才尊重其设置，
+    // 否则旧的 localStorage 起始日会截断历史曲线。清空输入框即可恢复默认。
+    if(p.start==='__AUTO__' || !p.start || !p.userStartSet){
       p.start = NAV_ANCHOR_START;
     }
   }
   if(p.start==='__AUTO__' && lt) p.start = lt;
   const $ = id=>document.getElementById(id);
   if($('navStart')) $('navStart').value = (p.start && p.start!=='__AUTO__') ? dashDate(p.start) : '';
+  // 手动模式下起始日由登记记录决定，输入框改为只读并说明，避免用户改了却被静默覆盖
+  if($('navStart')){
+    const isManual = p.mode==='manual';
+    $('navStart').disabled = isManual;
+    $('navStart').title = isManual ? '手动登记模式下起始日由最早登记日自动决定' : '';
+  }
   if($('navCapital')) $('navCapital').value=p.capital;
   if($('navRebal')) $('navRebal').value=p.rebal;
   if($('navComm')) $('navComm').value=(p.comm*10000);
@@ -1348,7 +1422,8 @@ async function renderNav(){
   if(sim.rebalances) sim.rebalances.forEach(r=>{ if(manualSet.has(r.date)) r.type='manual'; });
 
   const chartMode = window.__navChartMode || 'norm';
-  const benchNorm = benchmarkSeries(p.bench, p.start);
+  // 基准起点必须与策略曲线的实际起点一致（用 sim.actualStart），否则两条线起点不同日期会整体错位
+  const benchNorm = benchmarkSeries(p.bench, (sim && sim.actualStart) || p.start);
   if($('navChart')) $('navChart').innerHTML = drawNavChart(sim, benchNorm, chartMode);
   if($('navSummary')){
     if(sim.error){ $('navSummary').innerHTML='<span style="color:var(--up)">'+sim.error+'</span>'; }
@@ -1361,7 +1436,15 @@ async function renderNav(){
         html += ` ｜ <span style="display:inline-flex;align-items:center;gap:4px;font-size:.85rem;"><span style="display:inline-block;width:8px;height:8px;background:#f0a020;border-radius:2px;"></span>策略</span>`;
         html += ` <span style="display:inline-flex;align-items:center;gap:4px;font-size:.85rem;"><span style="display:inline-block;width:8px;height:8px;background:#4d8bff;border-radius:2px;"></span>${benchNorm.label||'基准'}</span>`;
       }
-      if(sim.fallback) html += ` ｜ <span style="color:var(--gold)">注：起始日 ${p.start} 暂无行情，已用最新交易日 ${sim.actualStart} 演示</span>`;
+      if(sim.fallback) html += ` ｜ <span style="color:var(--gold)">注：起始日 ${p.start} 晚于最新行情，已用最新交易日 ${sim.actualStart} 演示</span>`;
+      if(sim.startClamped) html += ` ｜ <span style="color:var(--gold)">注：起始日早于可用行情起点，已从 ${sim.actualStart} 起算</span>`;
+      // 基准落后提示：数据源为快照且实时基准升级失败时，蓝线会短于策略线，这里显式告知
+      if(chartMode==='norm' && benchNorm && benchNorm.last && sim.nav && sim.nav.length){
+        const endD2 = sim.nav[sim.nav.length-1].date;
+        if(normalizeDate(benchNorm.last) < endD2){
+          html += ` ｜ <span style="color:var(--gold)">基准数据截至 ${benchNorm.last}，未同步到最新交易日（实时通道未取到该基准）</span>`;
+        }
+      }
       $('navSummary').innerHTML = html;
     }
   }
@@ -1391,14 +1474,26 @@ function onNavParamChange(ev){
   const p=loadNavParams();
   const $=id=>document.getElementById(id);
   if($('navStart')){
-    const nd=normalizeDate($('navStart').value);   // type=date 返回 YYYY-MM-DD，必须规范化
-    if(nd) p.start=nd;
-    // 仅当用户真正改了「起始日」输入框时，才在本会话内尊重其输入（避免旧持久化值制造大量历史回测）
+    const raw=$('navStart').value;
+    const nd=normalizeDate(raw);                   // type=date 返回 YYYY-MM-DD，必须规范化
+    if(nd){ p.start=nd; p.userStartSet=true; }
+    else if(!raw){ p.start='__AUTO__'; p.userStartSet=false; }   // 清空输入框 = 恢复默认锚点
+    // 仅当用户真正改了「起始日」输入框时，才尊重其输入（避免旧持久化值制造大量历史回测）
     if(ev && ev.target && ev.target.id==='navStart') window.__navStartExplicit=true;
   }
-  if($('navCapital')) p.capital=parseFloat($('navCapital').value)||p.capital;
-  if($('navRebal')) p.rebal=parseInt($('navRebal').value)||p.rebal;
-  if($('navComm')) p.comm=(parseFloat($('navComm').value)||1)/10000;
+  // 参数护栏：非法值一律忽略并保留原值，避免死循环（rebal<1）、净值失真（capital<0）、凭空生钱（comm<0）
+  if($('navCapital')){
+    const v=parseFloat($('navCapital').value);
+    if(isFinite(v) && v>0) p.capital=v;
+  }
+  if($('navRebal')){
+    const v=parseInt($('navRebal').value,10);
+    if(isFinite(v) && v>=1) p.rebal=v; else showToast('调仓间隔需为 ≥1 的整数，已忽略该输入');
+  }
+  if($('navComm')){
+    const v=parseFloat($('navComm').value);
+    if(isFinite(v) && v>=0) p.comm=v/10000; else showToast('佣金不能为负，已忽略该输入');
+  }
   if($('navBench')) p.bench=$('navBench').value;
   const m=document.querySelector('input[name=navMode]:checked'); if(m) p.mode=m.value;
   saveNavParams(p);
@@ -1412,7 +1507,10 @@ function init(){
     const bt = BUILD_TIME.indexOf('__')===0 ? (new Date().toLocaleString('zh-CN',{hour12:false})+'（本地预览）') : BUILD_TIME;
     $f('buildTime').textContent = bt;
   }
-  loadAndRender();
+  // 兜底：加载/渲染异常时给出可见状态，避免页面永远停在「正在初始化…」（原实现无 catch → 静默 unhandled rejection）
+  loadAndRender().catch(e=>{
+    setStatus('error','初始化异常：'+(e&&e.message?e.message:'未知错误')+'，请点「立即刷新」重试');
+  });
 }
 init();
 </script>
