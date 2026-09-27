@@ -405,7 +405,7 @@
 <script>
 /* 构建版本：APP_VERSION 手动维护；BUILD_TIME 占位符由 _push_github.js 部署时替换为真实时间，本地预览时显示本地时间 */
 const APP_VERSION = "v2026.08.12";
-const BUILD_TIME = "2026/9/27 16:28:45（本地构建）";
+const BUILD_TIME = "2026/9/27 17:03:36";
 /* 强制破除 index.html 自身 CDN/浏览器缓存：首次访问若 URL 没有 v=xxx 参数，自动跳转到带 BUILD_TIME 的版本。
    GitHub Pages 对带不同 query string 的 URL 会重新回源；后续可用带 v 的书签固定版本。 */
 (function(){
@@ -946,18 +946,42 @@ function normalizeDate(s){
 function dashDate(s){ // YYYYMMDD -> YYYY-MM-DD（供 type=date 输入框展示）
   return (s && /^\d{8}$/.test(s)) ? s.replace(/^(\d{4})(\d{2})(\d{2})$/,'$1-$2-$3') : '';
 }
-/* 从 yyyymmdd 起跳过周末，前进 n 个交易日，返回 yyyy-mm-dd（近似下次调仓日，忽略法定节假日） */
+/* ===== A 股法定休市日表（只登记落在工作日的休市日；周末由 getDay() 判断）=====
+   来源：沪深北交易所《关于 2026 年部分节假日休市安排的通知》（上证公告〔2025〕45 号）。
+   新年度公告（通常 12 月下旬发布）出来后，在下方追加次年日期，并同步更新 A_HOLIDAY_MAX_YEAR。 */
+const A_HOLIDAYS = {
+  '2026-01-01':'元旦', '2026-01-02':'元旦',
+  '2026-02-16':'春节', '2026-02-17':'春节', '2026-02-18':'春节', '2026-02-19':'春节', '2026-02-20':'春节', '2026-02-23':'春节',
+  '2026-04-06':'清明',
+  '2026-05-01':'劳动节', '2026-05-04':'劳动节', '2026-05-05':'劳动节',
+  '2026-06-19':'端午',
+  '2026-09-25':'中秋',
+  '2026-10-01':'国庆', '2026-10-02':'国庆', '2026-10-05':'国庆', '2026-10-06':'国庆', '2026-10-07':'国庆'
+};
+/* 休市安排已公布到的年份。推算结果超出该年份＝跨入尚未公布安排的年份，返回值标注「（估）」。 */
+const A_HOLIDAY_MAX_YEAR = 2026;
+
+function isoDate(d){
+  const m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
+  return d.getFullYear()+'-'+m+'-'+day;
+}
+/* 从 yyyymmdd 起前进 n 个交易日，返回 yyyy-mm-dd（下次调仓日）。
+   ① 真实交易日历已覆盖该区间 → 直接取历法结果（天然含全部法定休市与停牌，最精确）；
+   ② 日历未覆盖（落在未来）→ 按「跳周末 + 跳法定休市表」推算，跨入未公布年份时追加「（估）」。 */
 function nextTradingDate(yyyymmdd, n){
   if(!yyyymmdd || !/^\d{8}$/.test(yyyymmdd) || !(n>0)) return '--';
+  const ahead = buildCalendar().filter(d => d > yyyymmdd);
+  if(ahead.length >= n) return dashDate(ahead[n-1]);
   const d=new Date(+yyyymmdd.slice(0,4), +yyyymmdd.slice(4,6)-1, +yyyymmdd.slice(6,8));
   let cnt=0;
   while(cnt<n){
     d.setDate(d.getDate()+1);
     const w=d.getDay();
-    if(w>=1 && w<=5) cnt++;   // 跳过周六(6)/周日(0)
+    if(w<1 || w>5) continue;              // 跳过周六/周日
+    if(A_HOLIDAYS[isoDate(d)]) continue;  // 跳过法定休市日
+    cnt++;
   }
-  const m=String(d.getMonth()+1).padStart(2,'0'), day=String(d.getDate()).padStart(2,'0');
-  return d.getFullYear()+'-'+m+'-'+day;
+  return isoDate(d) + (d.getFullYear() > A_HOLIDAY_MAX_YEAR ? '（估）' : '');
 }
 
 // 自动模式净值模拟锚点：双因子策略启动日。固定不随"今天"漂移，使历史调仓稳定可见（如 8/11 首买）。
